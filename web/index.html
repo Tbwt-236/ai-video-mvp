@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#141616">
+  <meta name="description" content="FRAME 拾帧，把想法写成分镜，把分镜变成动态短片。">
+  <title>FRAME 拾帧 · 创作工作台</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <svg class="icon-defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/><path d="m20 2 .6 1.4L22 4l-1.4.6L20 6l-.6-1.4L18 4l1.4-.6L20 2Z"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 10h4m10 0h4M3 14h4m10 0h4"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></symbol>
+  </defs></svg>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="FRAME 拾帧首页"><span class="brand-mark">f<span>／</span></span><span>FRAME<small>拾帧 · 灵感成片</small></span></a>
+    <button class="new-project" id="new-project"><svg><use href="#i-plus"/></svg>新建作品 <span>↗</span></button>
+    <nav aria-label="主导航">
+      <button id="nav-studio" class="nav-item active"><svg><use href="#i-grid"/></svg>创作工作台</button>
+      <button id="nav-library" class="nav-item"><svg><use href="#i-film"/></svg>我的作品<span id="project-count">0</span></button>
+    </nav>
+    <div class="sidebar-label">最近项目 <span>LOCAL</span></div>
+    <div id="recent-projects" class="recent-projects"></div>
+    <div class="sidebar-bottom">
+      <div class="local-note"><span class="status-dot"></span><div>灵感，安心留在本地<small>作品自动保存在这台设备</small></div></div>
+      <button class="help-button" id="help-open"><svg><use href="#i-info"/></svg>演示指南 <span>↗</span></button>
+      <div class="profile"><span>Q</span><div>我的创作空间<small>PERSONAL WORKSPACE</small></div><span class="version">V0.1</span></div>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar"><div><span>工作空间</span><b>/</b><span id="breadcrumb">创作工作台</span></div><div class="top-actions"><span id="connection" class="connection"><span class="status-dot"></span>本地工作室</span><button class="icon-button" id="help-top" aria-label="打开使用说明"><svg><use href="#i-info"/></svg></button></div></header>
+    <div id="studio-view" class="page">
+      <section class="page-heading"><div><div class="eyebrow">FROM A THOUGHT TO A FRAME</div><h1>好想法，值得被看见<span>。</span></h1><p>写下灵感，编排分镜，让你的第一支短片在这里诞生。</p></div><span class="studio-tag">CREATOR STUDIO <i>✳</i></span></section>
+      <div class="steps" aria-label="创作进度"><button class="step active" id="step-idea"><span>01</span>创意输入</button><div></div><button class="step" id="step-board" disabled><span>02</span>分镜编辑</button><div></div><button class="step" id="step-export" disabled><span>03</span>成片导出</button><small>让灵感一步步成形</small></div>
+      <div class="workspace">
+        <div class="editor-column">
+          <section class="panel brief-panel" id="brief-panel">
+            <div class="section-title"><h2><svg><use href="#i-spark"/></svg>从一个想法开始</h2><span>THE BRIEF</span></div>
+            <form id="brief-form">
+              <label for="prompt" class="field-label">你想讲一个怎样的故事？</label>
+              <div class="prompt-wrap"><textarea id="prompt" name="prompt" minlength="5" maxlength="800" required placeholder="例如：一支关于周末城市漫游的短片。给忙碌的年轻人，传递慢下来、发现日常之美的感觉……"></textarea><div class="prompt-footer"><span>描述主题、受众，以及你想传递的感觉</span><span id="prompt-count">0 / 800</span></div></div>
+              <div class="inspiration"><span>试试这些灵感</span><div id="examples"></div></div>
+              <div class="field-heading"><span class="field-label">选择画面风格</span><small>三种动态视觉模板</small></div>
+              <div class="style-options" role="group" aria-label="画面风格">
+                <button type="button" class="style-option selected" data-style="cinema" aria-pressed="true"><div class="style-art cinema"><i></i><b></b><em>01 / SLOW LIVING</em></div><span>日落电影感 <svg><use href="#i-check"/></svg></span><small>温暖 · 留白 · 山野</small></button>
+                <button type="button" class="style-option" data-style="editorial" aria-pressed="false"><div class="style-art editorial"><i></i><b></b><em>02 / LESS IS MORE</em></div><span>自然编辑风 <svg><use href="#i-check"/></svg></span><small>质感 · 几何 · 秩序</small></button>
+                <button type="button" class="style-option" data-style="tech" aria-pressed="false"><div class="style-art tech"><i></i><b></b><em>03 / NEXT CHAPTER</em></div><span>未来科技感 <svg><use href="#i-check"/></svg></span><small>理性 · 轨道 · 光线</small></button>
+              </div>
+              <div class="format-row"><fieldset><legend class="field-label">画面比例</legend><div class="segment" id="aspect-options"><button type="button" data-aspect="9:16" class="selected" aria-pressed="true"><i class="ratio-icon vertical"></i>9:16</button><button type="button" data-aspect="16:9" aria-pressed="false"><i class="ratio-icon horizontal"></i>16:9</button><button type="button" data-aspect="1:1" aria-pressed="false"><i class="ratio-icon square"></i>1:1</button></div></fieldset><div class="duration-field"><label class="field-label" for="duration">预计时长</label><select id="duration"><option value="15">15 秒 · 轻量表达</option><option value="30">30 秒 · 完整故事</option><option value="45">45 秒 · 深入展开</option><option value="60">60 秒 · 从容讲述</option></select></div></div>
+              <div class="generation-mode"><label for="generation-mode">编写方式</label><select id="generation-mode"><option value="template">本地模板 · 无需密钥</option><option value="ai" disabled>DeepSeek AI · 尚未配置</option></select></div>
+              <div id="form-error" class="error-box" role="alert" hidden></div>
+              <button type="submit" id="generate" class="primary wide"><svg><use href="#i-spark"/></svg><span>生成我的分镜</span><svg><use href="#i-arrow"/></svg></button>
+              <p class="generation-note" id="generation-note">本地模板将创意匹配到预设文案，可在下一步自由修改。</p>
+            </form>
+          </section>
+          <section id="storyboard-panel" class="panel" hidden>
+            <div class="section-title"><h2><svg><use href="#i-film"/></svg>让故事，有自己的节奏</h2><span id="save-status">已保存</span></div>
+            <div class="board-heading"><label class="field-label" for="project-title">作品名称</label><input id="project-title" maxlength="32" required><div class="board-meta"><span id="board-source"></span><span id="board-total"></span></div></div>
+            <div class="board-settings"><label>风格<select id="board-style"><option value="cinema">日落电影感</option><option value="editorial">自然编辑风</option><option value="tech">未来科技感</option></select></label><label>画幅<select id="board-aspect"><option>9:16</option><option>16:9</option><option>1:1</option></select></label></div>
+            <div id="scenes" class="scenes"></div>
+            <div id="save-error" class="error-box" role="alert" hidden></div>
+            <div class="board-footer"><button class="secondary" id="back-brief">新创意</button><button class="primary" id="save-board"><svg><use href="#i-check"/></svg>保存分镜</button></div>
+            <p class="generation-note">标题和字幕都会出现在视频中。修改后保存，即可更新预览。</p>
+          </section>
+          <div class="bottom-note"><span>✳</span><div>先把故事讲好，再让画面发光。<small>动态文字画面 · 中文字幕 · 原创氛围音轨</small></div><span>MADE WITH FRAME</span></div>
+        </div>
+
+        <aside class="preview-column">
+          <section class="panel preview-panel"><div class="section-title"><h2>画面预览</h2><span id="preview-badge">风格示意</span></div>
+            <div class="preview-stage" id="preview-stage"><div class="sample-poster cinema" id="sample-poster"><div class="poster-top">F R A M E <span>01 / 03</span></div><div class="poster-orbit"></div><div class="poster-land"></div><div class="poster-copy"><span>A LITTLE ESCAPE</span><h3>把日常，<br>过成旷野。</h3><p>暂时放下日程，让好奇心带路。</p></div><div class="poster-line"></div></div><img id="scene-preview" alt="当前分镜预览" hidden><video id="final-video" controls playsinline preload="metadata" hidden></video></div>
+            <div class="preview-transport"><button id="play-preview" class="play-button" aria-label="播放分镜预览" disabled><svg><use href="#i-play"/></svg></button><span id="preview-time">00:00 <small>/ 00:15</small></span><span id="preview-spec">9:16</span><button id="next-preview" class="icon-button" aria-label="下一分镜" disabled>→</button></div>
+            <div id="timeline" class="mini-timeline"><span></span><span></span><span></span></div>
+            <p id="preview-hint" class="preview-hint">生成分镜后，在这里预览你的故事</p>
+          </section>
+          <section class="panel export-panel"><div class="section-title"><h2>成片设置</h2><span>EXPORT</span></div><div class="export-spec"><span>视频格式</span><strong>MP4 <small>H.264</small></strong></div><div class="export-spec"><span>画面质量</span><strong>720p <small>24 fps</small></strong></div><label class="export-spec music-label"><span>氛围音轨 <small>无配音</small></span><input type="checkbox" id="music" checked role="switch"><span class="switch" aria-hidden="true"></span></label><div id="job-progress" hidden><div class="job-line"><span id="job-message">准备导出</span><b id="job-percent">0%</b></div><progress id="progress" max="100" value="0"></progress></div><div id="export-error" class="error-box" role="alert" hidden></div><button id="export-video" class="primary wide" disabled><svg><use href="#i-download"/></svg><span>导出视频</span></button><div id="download-actions" hidden><a id="download-mp4" class="primary wide" download><svg><use href="#i-download"/></svg>下载 MP4</a><div class="download-secondary"><a id="download-srt" download>下载字幕</a><a id="download-json" download>导出分镜</a><button id="return-board-preview">查看分镜</button></div></div><p class="generation-note" id="export-note">生成分镜，距离成片再近一步</p></section>
+        </aside>
+      </div>
+    </div>
+    <div id="library-view" class="page" hidden><section class="page-heading"><div><div class="eyebrow">YOUR IDEAS, IN MOTION</div><h1>每一次灵感，都有迹可循<span>。</span></h1><p>继续打磨一个故事，或开始下一段创作。</p></div><button class="primary" id="library-new"><svg><use href="#i-plus"/></svg>新建作品</button></section><div class="library-bar"><h2>全部作品 <span id="library-count"></span></h2><label><span class="sr-only">搜索作品</span><input type="search" id="project-search" placeholder="搜索作品名称或创意…"></label></div><div id="library-grid" class="library-grid"></div></div>
+    <footer class="page-footer"><span>FRAME 拾帧</span><span>小小的想法，也能有自己的银幕。</span><span>LOCAL STUDIO / 2026</span></footer>
+  </main>
+  <dialog id="help-dialog"><div class="dialog-heading"><span class="eyebrow">A QUICK START</span><button id="help-close" class="icon-button" aria-label="关闭说明">✕</button></div><h2>三步，完成你的第一支短片。</h2><ol><li><b>描述创意</b><p>选择一个示例或输入自己的主题，挑选风格、比例和时长。</p></li><li><b>打磨分镜</b><p>生成后编辑标题、字幕与每段时长，保存并播放分镜预览。</p></li><li><b>导出成片</b><p>选择是否加入氛围音轨，导出并下载真实 MP4，也可下载 SRT 字幕和分镜 JSON。</p></li></ol><div class="help-scope"><b>当前版本的能力</b><p>本地模式使用预设文案与动态图形模板，无需密钥或联网。它不生成实拍画面，也不合成人声。</p><p>服务端配置 DEEPSEEK_API_KEY 后，可选择 AI 编写分镜；仅此模式会将创意发送给 DeepSeek。</p><p>作品保存在本机 data 文件夹。此版本适合个人本地演示。</p></div><button class="primary wide" id="help-start">开始创作<svg><use href="#i-arrow"/></svg></button></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

@@ -1,0 +1,6 @@
+-c requirements-lock.txt
+fastapi==0.115.12
+uvicorn==0.34.3
+Pillow==11.3.0
+imageio-ffmpeg==0.6.0
+httpx==0.28.1

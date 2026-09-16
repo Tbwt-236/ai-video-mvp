@@ -1,0 +1,31 @@
+{
+  "prompt": "做一支关于周末城市漫游的短片，给忙碌的年轻人，传递慢下来、发现日常之美的感觉。",
+  "style": "cinema",
+  "aspect": "9:16",
+  "duration": 15,
+  "mode": "template",
+  "title": "城市漫游 · 演示成片",
+  "scenes": [
+    {
+      "heading": "把日常，过成旷野",
+      "caption": "让脚步慢下来，在熟悉的城市发现新的风景。",
+      "duration": 5
+    },
+    {
+      "heading": "转个弯，发现光",
+      "caption": "走进一条陌生的小街，收藏被忽略的风景。",
+      "duration": 5
+    },
+    {
+      "heading": "出发，不必等远方",
+      "caption": "这个周末，从熟悉的城市开始一次新的漫游。",
+      "duration": 5
+    }
+  ],
+  "source": "template",
+  "id": "90891240-6b74-446f-9679-68f86ed00c80",
+  "version": 2,
+  "created_at": "2026-09-16T09:51:54.582853+00:00",
+  "updated_at": "2026-09-16T09:52:26.974160+00:00",
+  "example": false
+}
