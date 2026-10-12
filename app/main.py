@@ -14,7 +14,10 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .models import Brief, ProjectEdit, RenderRequest
+from .models import Brief, MerchantBrief, ProjectEdit, RenderRequest
+from .assets import MAX_UPLOAD, save_photo
+from .merchant import merchant_storyboard
+from .narration import NarrationError, available as narration_available
 from .renderer import ROOT, font, render, scene_image
 from .store import Store, now
 from .storyboard import EXAMPLES, generate_storyboard, offline_storyboard
@@ -26,6 +29,7 @@ def create_app(data_dir=None):
     store = Store(Path(data_dir or os.getenv("VIDEO_DATA_DIR", ROOT / "data")))
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="video-render")
     render_lock = threading.Lock()
+    upload_lock = threading.Lock()
 
     @asynccontextmanager
     async def lifespan(app):
@@ -49,14 +53,25 @@ def create_app(data_dir=None):
             origin = request.headers.get("origin")
             if origin and origin != f"{request.url.scheme}://{request.headers.get('host')}":
                 return JSONResponse({"detail": "仅接受同源请求"}, status_code=403)
-            if not request.headers.get("content-type", "").startswith("application/json"):
+            upload = request.method == "POST" and request.url.path.startswith("/api/projects/") and request.url.path.endswith("/assets")
+            content_type = request.headers.get("content-type", "").split(";")[0]
+            if upload and content_type not in {"image/jpeg", "image/png", "image/webp"}:
+                return JSONResponse({"detail": "请选择 JPG、PNG 或 WebP 照片"}, status_code=415)
+            if not upload and content_type != "application/json":
                 return JSONResponse({"detail": "请求必须使用 JSON"}, status_code=415)
             try:
                 length = int(request.headers.get("content-length", "0"))
             except ValueError:
                 return JSONResponse({"detail": "无效请求长度"}, status_code=400)
-            if length > 32768:
+            if length > (MAX_UPLOAD if upload else 32768):
                 return JSONResponse({"detail": "请求内容过大"}, status_code=413)
+            if not upload:
+                body = bytearray()
+                async for chunk in request.stream():
+                    body.extend(chunk)
+                    if len(body) > 32768:
+                        return JSONResponse({"detail": "请求内容过大"}, status_code=413)
+                request._body = bytes(body)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
@@ -87,7 +102,9 @@ def create_app(data_dir=None):
     @app.get("/api/config")
     def config():
         return {"ai_available": bool(os.getenv("DEEPSEEK_API_KEY", "").strip()),
-                "examples": EXAMPLES, "renderer": "动态文字短片 · H.264 MP4 · 720p · 24 fps"}
+                "examples": EXAMPLES, "renderer": "门店照片短片 · H.264 MP4 · 720p · 24 fps",
+                "narration_available": narration_available(),
+                "narration_note": "本机中文语音 · 朗读画面字幕" if narration_available() else "本机未提供中文配音，仍可导出照片、字幕与音乐"}
 
     @app.get("/api/health")
     def health():
@@ -118,9 +135,34 @@ def create_app(data_dir=None):
     def project(pid: str):
         return get_project(pid)
 
+    @app.post("/api/merchant-projects", status_code=201)
+    def create_merchant(brief: MerchantBrief):
+        project = {**brief.model_dump(include={"style", "aspect", "duration", "example"}),
+                   **merchant_storyboard(brief), "mode": "template", "id": str(uuid4()),
+                   "version": 1, "created_at": now(), "updated_at": now()}
+        store.save_project(project)
+        return project
+
+    @app.post("/api/projects/{pid}/assets", status_code=201)
+    async def upload_photo(pid: str, request: Request):
+        project = get_project(pid)
+        content = bytearray()
+        async for chunk in request.stream():
+            content.extend(chunk)
+            if len(content) > MAX_UPLOAD:
+                raise HTTPException(413, "照片不能超过 8 MB")
+        try:
+            with upload_lock:
+                return save_photo(content, store.directory / "assets" / project["id"])
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
     @app.put("/api/projects/{pid}")
     def edit_project(pid: str, edit: ProjectEdit):
         project = get_project(pid)
+        for scene in edit.scenes:
+            if scene.asset_id and not (store.directory / "assets" / project["id"] / f"{scene.asset_id}.jpg").is_file():
+                raise HTTPException(400, "照片不存在或不属于当前作品，请重新上传")
         changes = edit.model_dump(exclude={"version"})
         project.update(changes)
         project.update(version=edit.version+1, updated_at=now(), duration=sum(s.duration for s in edit.scenes))
@@ -134,7 +176,7 @@ def create_app(data_dir=None):
         if not 0 <= index < len(project["scenes"]):
             raise HTTPException(404, "找不到这个分镜")
         buffer = io.BytesIO()
-        scene_image(project, index).save(buffer, format="PNG")
+        scene_image(project, index, asset_dir=store.directory / "assets" / project["id"]).save(buffer, format="PNG")
         return Response(buffer.getvalue(), media_type="image/png")
 
     @app.get("/api/projects/{pid}/storyboard.json")
@@ -149,9 +191,12 @@ def create_app(data_dir=None):
         try:
             progress(3, "准备画面与中文排版")
             directory = store.directory / "exports" / job["id"]
-            render(job["snapshot"], directory, job["music"], progress)
+            metadata = render(job["snapshot"], directory, job["music"], progress,
+                              store.directory / "assets" / job["project_id"], job.get("narration", False))
             job.update(status="completed", progress=100, message="成片已就绪", completed_at=now(),
-                       bytes=(directory/"video.mp4").stat().st_size)
+                       bytes=(directory/"video.mp4").stat().st_size, **metadata)
+        except NarrationError as exc:
+            job.update(status="failed", error=str(exc))
         except Exception:
             log.exception("Video export failed: %s", job["id"])
             job.update(status="failed", error="视频合成失败，请重试。若持续失败，请检查磁盘空间与运行日志。")
@@ -163,9 +208,12 @@ def create_app(data_dir=None):
             project = get_project(pid)
             if request.version != project["version"]:
                 raise HTTPException(409, "项目已更新，请保存并刷新分镜后重试。")
+            if request.narration and not narration_available():
+                raise HTTPException(400, "此设备未提供本机中文配音，请关闭配音后导出。macOS 可在系统设置中安装婷婷语音。")
             jobs = store.jobs()
             for job in jobs:
                 if (job["project_id"] == pid and job["version"] == request.version and job["music"] == request.music
+                        and job.get("narration", False) == request.narration
                         and job["status"] in ("queued", "rendering", "completed")):
                     if job["status"] == "completed" and not (store.directory / "exports" / job["id"] / "video.mp4").is_file():
                         job.update(status="failed", error="成片文件已丢失，请重新导出。")
@@ -176,7 +224,7 @@ def create_app(data_dir=None):
                 raise HTTPException(429, "导出队列已满，请等待当前任务完成。")
             job = {"id": str(uuid4()), "project_id": pid, "version": project["version"],
                    "status": "queued", "progress": 0, "message": "等待渲染", "created_at": now(),
-                   "music": request.music, "snapshot": project, "title": project["title"],
+                   "music": request.music, "narration": request.narration, "materials": True, "snapshot": project, "title": project["title"],
                    "duration": project["duration"], "aspect": project["aspect"]}
             store.save_job(job)
             executor.submit(work, job.copy())
@@ -207,6 +255,18 @@ def create_app(data_dir=None):
         if job["status"] != "completed":
             raise HTTPException(409, "字幕尚未就绪")
         return FileResponse(store.directory / "exports" / job["id"] / "subtitles.srt", filename="subtitles.srt")
+
+    @app.get("/api/jobs/{jid}/materials/{name}")
+    def material_download(jid: str, name: str):
+        if name not in {"cover.png", "post.txt", "storyboard.json"}:
+            raise HTTPException(404, "找不到这个文件")
+        job = get_job(jid)
+        if job["status"] != "completed":
+            raise HTTPException(409, "素材尚未就绪")
+        path = store.directory / "exports" / job["id"] / name
+        if not path.is_file():
+            raise HTTPException(404, "旧版任务没有这份素材，请修改并重新导出")
+        return FileResponse(path, filename=name)
 
     app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="web")
     return app

@@ -35,23 +35,40 @@
     <div class="sidebar-bottom">
       <div class="local-note"><span class="status-dot"></span><div>灵感，安心留在本地<small>作品自动保存在这台设备</small></div></div>
       <button class="help-button" id="help-open"><svg><use href="#i-info"/></svg>演示指南 <span>↗</span></button>
-      <div class="profile"><span>Q</span><div>我的创作空间<small>PERSONAL WORKSPACE</small></div><span class="version">V0.1</span></div>
+      <div class="profile"><span>Q</span><div>我的创作空间<small>PERSONAL WORKSPACE</small></div><span class="version">V0.2</span></div>
     </div>
   </aside>
 
   <main>
     <header class="topbar"><div><span>工作空间</span><b>/</b><span id="breadcrumb">创作工作台</span></div><div class="top-actions"><span id="connection" class="connection"><span class="status-dot"></span>本地工作室</span><button class="icon-button" id="help-top" aria-label="打开使用说明"><svg><use href="#i-info"/></svg></button></div></header>
     <div id="studio-view" class="page">
-      <section class="page-heading"><div><div class="eyebrow">FROM A THOUGHT TO A FRAME</div><h1>好想法，值得被看见<span>。</span></h1><p>写下灵感，编排分镜，让你的第一支短片在这里诞生。</p></div><span class="studio-tag">CREATOR STUDIO <i>✳</i></span></section>
+      <section class="page-heading"><div><div class="eyebrow">YOUR SHOP, IN THE SPOTLIGHT</div><h1>让你的小店，被更多人看见<span>。</span></h1><p>填好门店信息，放上真实照片，做一支有声音的到店邀请。</p></div><span class="studio-tag">CREATOR STUDIO <i>✳</i></span></section>
       <div class="steps" aria-label="创作进度"><button class="step active" id="step-idea"><span>01</span>创意输入</button><div></div><button class="step" id="step-board" disabled><span>02</span>分镜编辑</button><div></div><button class="step" id="step-export" disabled><span>03</span>成片导出</button><small>让灵感一步步成形</small></div>
       <div class="workspace">
         <div class="editor-column">
           <section class="panel brief-panel" id="brief-panel">
-            <div class="section-title"><h2><svg><use href="#i-spark"/></svg>从一个想法开始</h2><span>THE BRIEF</span></div>
+            <div class="section-title"><h2><svg><use href="#i-spark"/></svg>从你的小店开始</h2><span>SHOP STORIES</span></div>
             <form id="brief-form">
+              <div class="brief-tabs" role="group" aria-label="创作类型"><button type="button" data-brief="merchant" class="selected" aria-pressed="true">商家宣传</button><button type="button" data-brief="creative" aria-pressed="false">自由创意</button></div>
+              <div id="merchant-fields">
+                <div class="merchant-intro"><span>咖啡小店 · 到店宣传</span><button type="button" id="merchant-example">填入虚构示例 ↗</button></div>
+                <p id="merchant-example-note" class="generation-note" hidden>当前是虚构演示信息；演示包中的咖啡图为 AI 素材，不代表真实门店。下载文案保留演示标识，正式制作请新建作品并填写真实信息。</p>
+                <div class="merchant-grid">
+                  <label>店名<input id="merchant-store-name" maxlength="24" required placeholder="例如：你的咖啡店名"></label>
+                  <label>这次主推什么<input id="merchant-product" maxlength="32" required placeholder="例如：桂花拿铁"></label>
+                  <label class="full">一个值得到店的理由<input id="merchant-selling-point" maxlength="48" required placeholder="写真实特色，例如：店里有临窗座位，适合午后休息"></label>
+                  <label class="full">活动信息 <small>可选</small><input id="merchant-offer" maxlength="40" placeholder="没有活动可留空；有活动请写清优惠和期限"></label>
+                  <label class="full">门店地址<input id="merchant-address" maxlength="48" required placeholder="城市、街道和门牌，方便顾客找到你"></label>
+                  <label class="full">想邀请顾客做什么<input id="merchant-cta" maxlength="32" required value="欢迎到店，喝一杯喜欢的咖啡。"></label>
+                </div>
+                <p class="generation-note">只使用你填写的信息编排文案。下一步上传产品、环境和门头照片。</p>
+              </div>
+              <div id="creative-fields" hidden>
+
               <label for="prompt" class="field-label">你想讲一个怎样的故事？</label>
-              <div class="prompt-wrap"><textarea id="prompt" name="prompt" minlength="5" maxlength="800" required placeholder="例如：一支关于周末城市漫游的短片。给忙碌的年轻人，传递慢下来、发现日常之美的感觉……"></textarea><div class="prompt-footer"><span>描述主题、受众，以及你想传递的感觉</span><span id="prompt-count">0 / 800</span></div></div>
+              <div class="prompt-wrap"><textarea id="prompt" name="prompt" minlength="5" maxlength="800" disabled placeholder="例如：一支关于周末城市漫游的短片。给忙碌的年轻人，传递慢下来、发现日常之美的感觉……"></textarea><div class="prompt-footer"><span>描述主题、受众，以及你想传递的感觉</span><span id="prompt-count">0 / 800</span></div></div>
               <div class="inspiration"><span>试试这些灵感</span><div id="examples"></div></div>
+              </div>
               <div class="field-heading"><span class="field-label">选择画面风格</span><small>三种动态视觉模板</small></div>
               <div class="style-options" role="group" aria-label="画面风格">
                 <button type="button" class="style-option selected" data-style="cinema" aria-pressed="true"><div class="style-art cinema"><i></i><b></b><em>01 / SLOW LIVING</em></div><span>日落电影感 <svg><use href="#i-check"/></svg></span><small>温暖 · 留白 · 山野</small></button>
@@ -59,10 +76,10 @@
                 <button type="button" class="style-option" data-style="tech" aria-pressed="false"><div class="style-art tech"><i></i><b></b><em>03 / NEXT CHAPTER</em></div><span>未来科技感 <svg><use href="#i-check"/></svg></span><small>理性 · 轨道 · 光线</small></button>
               </div>
               <div class="format-row"><fieldset><legend class="field-label">画面比例</legend><div class="segment" id="aspect-options"><button type="button" data-aspect="9:16" class="selected" aria-pressed="true"><i class="ratio-icon vertical"></i>9:16</button><button type="button" data-aspect="16:9" aria-pressed="false"><i class="ratio-icon horizontal"></i>16:9</button><button type="button" data-aspect="1:1" aria-pressed="false"><i class="ratio-icon square"></i>1:1</button></div></fieldset><div class="duration-field"><label class="field-label" for="duration">预计时长</label><select id="duration"><option value="15">15 秒 · 轻量表达</option><option value="30">30 秒 · 完整故事</option><option value="45">45 秒 · 深入展开</option><option value="60">60 秒 · 从容讲述</option></select></div></div>
-              <div class="generation-mode"><label for="generation-mode">编写方式</label><select id="generation-mode"><option value="template">本地模板 · 无需密钥</option><option value="ai" disabled>DeepSeek AI · 尚未配置</option></select></div>
+              <div class="generation-mode" hidden><label for="generation-mode">编写方式</label><select id="generation-mode"><option value="template">本地模板 · 无需密钥</option><option value="ai" disabled>DeepSeek AI · 尚未配置</option></select></div>
               <div id="form-error" class="error-box" role="alert" hidden></div>
               <button type="submit" id="generate" class="primary wide"><svg><use href="#i-spark"/></svg><span>生成我的分镜</span><svg><use href="#i-arrow"/></svg></button>
-              <p class="generation-note" id="generation-note">本地模板将创意匹配到预设文案，可在下一步自由修改。</p>
+              <p class="generation-note" id="generation-note">门店模板 · 无需密钥 · 信息只保存在本机</p>
             </form>
           </section>
           <section id="storyboard-panel" class="panel" hidden>
@@ -72,9 +89,9 @@
             <div id="scenes" class="scenes"></div>
             <div id="save-error" class="error-box" role="alert" hidden></div>
             <div class="board-footer"><button class="secondary" id="back-brief">新创意</button><button class="primary" id="save-board"><svg><use href="#i-check"/></svg>保存分镜</button></div>
-            <p class="generation-note">标题和字幕都会出现在视频中。修改后保存，即可更新预览。</p>
+            <p class="generation-note">每一幕都可以上传真实照片。照片会居中裁切；保存后检查预览。配音朗读字幕，镜头会按朗读长度自动延长。</p>
           </section>
-          <div class="bottom-note"><span>✳</span><div>先把故事讲好，再让画面发光。<small>动态文字画面 · 中文字幕 · 原创氛围音轨</small></div><span>MADE WITH FRAME</span></div>
+          <div class="bottom-note"><span>✳</span><div>先把故事讲好，再让画面发光。<small>门店照片 · 中文配音 · 封面与发布文案</small></div><span>MADE WITH FRAME</span></div>
         </div>
 
         <aside class="preview-column">
@@ -84,14 +101,14 @@
             <div id="timeline" class="mini-timeline"><span></span><span></span><span></span></div>
             <p id="preview-hint" class="preview-hint">生成分镜后，在这里预览你的故事</p>
           </section>
-          <section class="panel export-panel"><div class="section-title"><h2>成片设置</h2><span>EXPORT</span></div><div class="export-spec"><span>视频格式</span><strong>MP4 <small>H.264</small></strong></div><div class="export-spec"><span>画面质量</span><strong>720p <small>24 fps</small></strong></div><label class="export-spec music-label"><span>氛围音轨 <small>无配音</small></span><input type="checkbox" id="music" checked role="switch"><span class="switch" aria-hidden="true"></span></label><div id="job-progress" hidden><div class="job-line"><span id="job-message">准备导出</span><b id="job-percent">0%</b></div><progress id="progress" max="100" value="0"></progress></div><div id="export-error" class="error-box" role="alert" hidden></div><button id="export-video" class="primary wide" disabled><svg><use href="#i-download"/></svg><span>导出视频</span></button><div id="download-actions" hidden><a id="download-mp4" class="primary wide" download><svg><use href="#i-download"/></svg>下载 MP4</a><div class="download-secondary"><a id="download-srt" download>下载字幕</a><a id="download-json" download>导出分镜</a><button id="return-board-preview">查看分镜</button></div></div><p class="generation-note" id="export-note">生成分镜，距离成片再近一步</p></section>
+          <section class="panel export-panel"><div class="section-title"><h2>成片设置</h2><span>EXPORT</span></div><div class="export-spec"><span>视频格式</span><strong>MP4 <small>H.264</small></strong></div><div class="export-spec"><span>画面质量</span><strong>720p <small>24 fps</small></strong></div><label class="export-spec music-label"><span>氛围音轨 <small>轻音乐</small></span><input type="checkbox" id="music" checked role="switch"><span class="switch" aria-hidden="true"></span></label><label class="export-spec music-label"><span>中文配音 <small>朗读字幕</small></span><input type="checkbox" id="narration" role="switch" disabled><span class="switch" aria-hidden="true"></span></label><p id="narration-note" class="generation-note">正在检查本机语音…</p><div id="job-progress" hidden><div class="job-line"><span id="job-message">准备导出</span><b id="job-percent">0%</b></div><progress id="progress" max="100" value="0"></progress></div><div id="export-error" class="error-box" role="alert" hidden></div><button id="export-video" class="primary wide" disabled><svg><use href="#i-download"/></svg><span>导出视频</span></button><div id="download-actions" hidden><a id="download-mp4" class="primary wide" download><svg><use href="#i-download"/></svg>下载 MP4</a><div class="download-secondary"><a id="download-srt" download>下载字幕</a><a id="download-json" download>导出分镜</a><a id="download-cover" download>下载封面</a><a id="download-post" download>发布文案</a><button id="return-board-preview">查看分镜</button></div></div><p class="generation-note" id="export-note">生成分镜，距离成片再近一步</p></section>
         </aside>
       </div>
     </div>
     <div id="library-view" class="page" hidden><section class="page-heading"><div><div class="eyebrow">YOUR IDEAS, IN MOTION</div><h1>每一次灵感，都有迹可循<span>。</span></h1><p>继续打磨一个故事，或开始下一段创作。</p></div><button class="primary" id="library-new"><svg><use href="#i-plus"/></svg>新建作品</button></section><div class="library-bar"><h2>全部作品 <span id="library-count"></span></h2><label><span class="sr-only">搜索作品</span><input type="search" id="project-search" placeholder="搜索作品名称或创意…"></label></div><div id="library-grid" class="library-grid"></div></div>
     <footer class="page-footer"><span>FRAME 拾帧</span><span>小小的想法，也能有自己的银幕。</span><span>LOCAL STUDIO / 2026</span></footer>
   </main>
-  <dialog id="help-dialog"><div class="dialog-heading"><span class="eyebrow">A QUICK START</span><button id="help-close" class="icon-button" aria-label="关闭说明">✕</button></div><h2>三步，完成你的第一支短片。</h2><ol><li><b>描述创意</b><p>选择一个示例或输入自己的主题，挑选风格、比例和时长。</p></li><li><b>打磨分镜</b><p>生成后编辑标题、字幕与每段时长，保存并播放分镜预览。</p></li><li><b>导出成片</b><p>选择是否加入氛围音轨，导出并下载真实 MP4，也可下载 SRT 字幕和分镜 JSON。</p></li></ol><div class="help-scope"><b>当前版本的能力</b><p>本地模式使用预设文案与动态图形模板，无需密钥或联网。它不生成实拍画面，也不合成人声。</p><p>服务端配置 DEEPSEEK_API_KEY 后，可选择 AI 编写分镜；仅此模式会将创意发送给 DeepSeek。</p><p>作品保存在本机 data 文件夹。此版本适合个人本地演示。</p></div><button class="primary wide" id="help-start">开始创作<svg><use href="#i-arrow"/></svg></button></dialog>
+  <dialog id="help-dialog"><div class="dialog-heading"><span class="eyebrow">A QUICK START</span><button id="help-close" class="icon-button" aria-label="关闭说明">✕</button></div><h2>三步，完成你的第一支短片。</h2><ol><li><b>填写门店信息</b><p>填入店名、产品、特色和地址。可先用虚构咖啡店示例体验，也可切换自由创意。</p></li><li><b>打磨分镜</b><p>为每幕上传产品、环境或门头照片，修改字幕，保存后检查裁切与文字。支持 JPG、PNG、WebP，单张不超过 8 MB、2000 万像素。</p></li><li><b>导出成片</b><p>选择中文配音与音乐，导出视频、字幕、封面和发布文案。配音会延长过短镜头；成片以实际导出时长为准。</p></li></ol><div class="help-scope"><b>当前版本的能力</b><p>门店模式只根据填写信息套用文案模板，照片由你上传，不生成实拍画面。当前中文配音使用 macOS 已安装的婷婷语音，无需 API 密钥；其他系统仍可导出字幕与音乐。</p><p>服务端配置 DEEPSEEK_API_KEY 后，可选择 AI 编写分镜；仅此模式会将创意发送给 DeepSeek。</p><p>作品保存在本机 data 文件夹。此版本适合个人本地演示。</p></div><button class="primary wide" id="help-start">开始创作<svg><use href="#i-arrow"/></svg></button></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

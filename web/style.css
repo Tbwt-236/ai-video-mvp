@@ -2589,6 +2589,28 @@ dialog li p {
   bottom:17px;
 }
 
+.brief-tabs { display:flex; gap:8px; padding:5px; background:#141918; border-radius:10px; margin-bottom:22px; }
+.brief-tabs button { flex:1; border:0; border-radius:7px; padding:11px; color:#aab7ad; background:transparent; cursor:pointer; }
+.brief-tabs button.selected { color:#ddefb0; background:#30392c; }
+.merchant-intro { display:flex; justify-content:space-between; gap:14px; align-items:center; margin-bottom:18px; color:#cfdbbd; font-size:13px; }
+.merchant-intro button { border:0; background:transparent; color:#bfda93; font-size:12px; cursor:pointer; }
+.merchant-grid { display:grid; grid-template-columns:1fr 1fr; gap:17px; margin-bottom:16px; }
+.merchant-grid label { display:block; font-size:12px; color:#c7cec5; }
+.merchant-grid .full { grid-column:1/-1; }
+.merchant-grid small { color:#869184; font-weight:400; }
+.merchant-grid input { display:block; width:100%; margin-top:8px; padding:12px; border:1px solid #354037; border-radius:8px; background:#171e1a; color:#edf0e8; font:inherit; font-size:13px; }
+.merchant-grid input:focus { outline:2px solid #a9c37b; outline-offset:2px; }
+.merchant-grid input::placeholder { color:#788579; }
+.scene-photo { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:16px; padding-top:13px; border-top:1px solid #354037; }
+.photo-upload { position:relative; cursor:pointer; display:inline-flex; align-items:center; gap:5px; color:#c9dda7; font-size:12px; }
+.photo-upload svg { width:14px; height:14px; }
+.photo-upload input { position:absolute; inset:0; opacity:0; width:100%; cursor:pointer; }
+.photo-upload:focus-within { outline:2px solid #c9dda7; outline-offset:4px; }
+.photo-status { font-size:11px; color:#94a18f; }
+.remove-photo { border:0; background:none; color:#c1b6a6; cursor:pointer; font-size:11px; }
+.download-secondary { flex-wrap:wrap; row-gap:13px; }
+@media(max-width:600px) { .merchant-grid { grid-template-columns:1fr; } .merchant-intro { align-items:flex-start; } }
+
 @media(prefers-reduced-motion:reduce) {
   *,*:before,*:after {
     animation:none!important;

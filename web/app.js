@@ -5,7 +5,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 const icon = (name) => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const esc = (value) => String(value).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const state = {projects: [], current: null, style: "cinema", aspect: "9:16", scene: 0,
-  dirty: false, playing: false, job: null, poll: null, playTimer: null, saving: false, serial: 0, config: null};
+  dirty: false, playing: false, job: null, poll: null, playTimer: null, saving: false, serial: 0, config: null, briefKind: "merchant", merchantExample: false, uploading: 0};
 let toastTimer;
 
 function toast(message, error = false) {
@@ -21,7 +21,7 @@ async function api(url, options = {}) {
   const timeout = setTimeout(() => controller.abort(), 80000);
   try {
     const response = await fetch(url, { ...options, signal: controller.signal,
-      headers: options.body ? {"Content-Type": "application/json"} : {} });
+      headers: options.body ? {"Content-Type": "application/json", ...options.headers} : {} });
     const body = await response.json();
     if (!response.ok) throw new Error(body.detail || "操作失败，请稍后重试。");
     return body;
@@ -58,7 +58,7 @@ function setStep(step) {
   $("#step-export").disabled = !state.current;
 }
 
-function canLeave() { return !state.dirty || window.confirm("分镜有未保存的修改，确定离开并放弃这些修改吗？"); }
+function canLeave() { if (state.uploading) { toast("照片正在上传，请稍候。", true); return false; } return !state.dirty || window.confirm("分镜有未保存的修改，确定离开并放弃这些修改吗？"); }
 
 function newProject() {
   if (!canLeave()) return;
@@ -66,6 +66,9 @@ function newProject() {
   clearTimeout(state.poll);
   stopPreview();
   state.current = null; state.job = null; state.dirty = false;
+  $("#brief-form").reset(); state.merchantExample = false; $("#merchant-example-note").hidden = true;
+  $("#narration").checked = Boolean(state.config?.narration_available);
+  setBriefKind(state.briefKind);
   $("#final-video").pause(); $("#final-video").removeAttribute("src");
   $("#final-video").hidden = true;
   $("#scene-preview").hidden = true;
@@ -144,8 +147,8 @@ async function openProject(id) {
     window.scrollTo({top:0, behavior:"smooth"});
     const jobs = await api(`/api/projects/${id}/jobs`);
     if (serial !== state.serial) return;
-    const matching = jobs.find(j => j.version === project.version && j.music === $("#music").checked);
-    if (matching) handleJob(matching);
+    const matching = jobs.find(j => j.version === project.version);
+    if (matching) { $("#music").checked = matching.music; $("#narration").checked = Boolean(matching.narration); handleJob(matching); }
   } catch (error) { toast(error.message, true); }
 }
 
@@ -153,7 +156,7 @@ function displayBoard() {
   const p = state.current;
   $("#brief-panel").hidden = true; $("#storyboard-panel").hidden = false;
   $("#project-title").value = p.title; $("#board-style").value = p.style; $("#board-aspect").value = p.aspect;
-  $("#board-source").textContent = p.source === "deepseek" ? "✳ DeepSeek AI 分镜" : "◈ 本地模板 · 可自由编辑";
+  $("#board-source").textContent = p.source === "merchant_template" ? (p.example ? "◈ 虚构门店示例" : "◈ 门店信息模板") : p.source === "deepseek" ? "✳ DeepSeek AI 分镜" : "◈ 本地模板 · 可自由编辑";
   $("#save-status").textContent = "已保存至本地";
   showError("#save-error"); showError("#export-error");
   renderScenes(); updateBoardTotal(); showScene(0); setStep(2); resetExport();
@@ -162,7 +165,7 @@ function displayBoard() {
 function renderScenes() {
   const p = state.current;
   $("#scenes").innerHTML = p.scenes.map((scene,i) =>
-    `<article class="scene-card ${i===state.scene ? "active":""}" data-index="${i}"><div class="scene-card-head"><span class="scene-number">${String(i+1).padStart(2,"0")}</span><span>${i===0 ? "开场 · 留住注意" : i===p.scenes.length-1 ? "收束 · 留下余韵" : "展开 · 讲述故事"}</span><label>时长 <input type="number" min="2" max="20" step="1" value="${scene.duration}" data-field="duration" aria-label="分镜 ${i+1} 时长">秒</label></div><div class="scene-content"><button class="scene-thumb" data-preview="${i}" aria-label="预览分镜 ${i+1}"><img src="${previewUrl(p,i)}" alt="分镜 ${i+1}" loading="lazy"></button><div><label for="heading-${i}">画面标题</label><input id="heading-${i}" data-field="heading" maxlength="32" value="${esc(scene.heading)}" required><label for="caption-${i}">画面字幕</label><textarea id="caption-${i}" data-field="caption" maxlength="96" required>${esc(scene.caption)}</textarea><div class="scene-counter">${scene.caption.length} / 96</div></div></div></article>`).join("");
+    `<article class="scene-card ${i===state.scene ? "active":""}" data-index="${i}" data-asset-id="${esc(scene.asset_id || "")}"><div class="scene-card-head"><span class="scene-number">${String(i+1).padStart(2,"0")}</span><span>${i===0 ? "开场 · 留住注意" : i===p.scenes.length-1 ? "收束 · 留下余韵" : "展开 · 讲述故事"}</span><label>时长 <input type="number" min="2" max="20" step="1" value="${scene.duration}" data-field="duration" aria-label="分镜 ${i+1} 时长">秒</label></div><div class="scene-content"><button class="scene-thumb" data-preview="${i}" aria-label="预览分镜 ${i+1}"><img src="${previewUrl(p,i)}" alt="分镜 ${i+1}" loading="lazy"></button><div><label for="heading-${i}">画面标题</label><input id="heading-${i}" data-field="heading" maxlength="32" value="${esc(scene.heading)}" required><label for="caption-${i}">画面字幕</label><textarea id="caption-${i}" data-field="caption" maxlength="96" required>${esc(scene.caption)}</textarea><div class="scene-counter">${scene.caption.length} / 96</div></div></div><div class="scene-photo"><label class="photo-upload">${icon("plus")} ${scene.asset_id ? "更换照片" : "上传门店照片"}<input type="file" accept="image/jpeg,image/png,image/webp" data-upload="${i}" aria-label="分镜 ${i+1} 照片"></label><span class="photo-status">${scene.asset_id ? "已使用照片" : "尚未上传 · 使用图形背景"}</span><button type="button" class="remove-photo" ${scene.asset_id ? "" : "hidden"}>移除照片</button></div></article>`).join("");
 }
 
 function updateBoardTotal() {
@@ -187,6 +190,7 @@ function readEdit() {
     heading:card.querySelector('[data-field="heading"]').value.trim(),
     caption:card.querySelector('[data-field="caption"]').value.trim(),
     duration:Number(card.querySelector('[data-field="duration"]').value),
+    asset_id: card.dataset.assetId || null,
   }));
   const title = $("#project-title").value.trim();
   if (!title) throw new Error("请填写作品名称。");
@@ -197,6 +201,7 @@ function readEdit() {
 }
 
 async function saveBoard() {
+  if (state.uploading) { showError("#save-error", "请等待照片上传完成后保存。"); return false; }
   if (!state.current || !state.dirty) return true;
   if (state.saving) return false;
   const id = state.current.id;
@@ -276,7 +281,7 @@ function resetExport() {
 function handleJob(job) {
   if (state.current?.id !== job.project_id) return;
   state.job = job;
-  const current = job.version === state.current.version && !state.dirty && job.music === $("#music").checked;
+  const current = job.version === state.current.version && !state.dirty && job.music === $("#music").checked && Boolean(job.narration) === $("#narration").checked;
   if (!current) { resetExport(); return; }
   if (["queued","rendering"].includes(job.status)) {
     $("#job-progress").hidden = false; $("#download-actions").hidden = true;
@@ -291,12 +296,16 @@ function handleJob(job) {
     $("#job-progress").hidden = true; $("#export-video").hidden = true; $("#download-actions").hidden = false;
     $("#download-mp4").href = `/api/jobs/${job.id}/video.mp4?download=true`;
     $("#download-srt").href = `/api/jobs/${job.id}/subtitles.srt`;
-    $("#download-json").href = `/api/projects/${job.project_id}/storyboard.json`;
-    $("#export-note").textContent = `已完成 · ${job.duration} 秒 · ${(job.bytes/1024/1024).toFixed(1)} MB${job.music ? " · 含氛围音轨" : " · 无声"}`;
+    $("#download-json").href = job.materials ? `/api/jobs/${job.id}/materials/storyboard.json` : `/api/projects/${job.project_id}/storyboard.json`;
+    for (const name of ["cover", "post"]) {
+      $(`#download-${name}`).hidden = !job.materials;
+      $(`#download-${name}`).href = `/api/jobs/${job.id}/materials/${name === "cover" ? "cover.png" : "post.txt"}`;
+    }
+    $("#export-note").textContent = `已完成 · ${Number(job.duration.toFixed(1))} 秒 · ${(job.bytes/1024/1024).toFixed(1)} MB${job.narration ? " · 中文配音" : ""}${job.music ? " · 氛围音轨" : job.narration ? "" : " · 无声"}`;
     $("#scene-preview").hidden = true; $("#sample-poster").hidden = true; $("#final-video").hidden = false;
     $(".preview-transport").hidden = true; $("#timeline").hidden = true;
     const videoUrl = `/api/jobs/${job.id}/video.mp4`;
-    $("#final-video").poster = previewUrl(state.current,0);
+    $("#final-video").poster = job.materials ? `/api/jobs/${job.id}/materials/cover.png` : previewUrl(state.current,0);
     if ($("#final-video").getAttribute("src") !== videoUrl) { $("#final-video").src = videoUrl; $("#final-video").load(); }
     $("#preview-badge").textContent = "成片就绪";
     $("#preview-hint").textContent = "使用播放器查看实际成片，支持全屏播放";
@@ -323,13 +332,16 @@ async function pollJob(id) {
 $("#brief-form").addEventListener("submit",async event=> {
   event.preventDefault();
   const prompt = $("#prompt").value.trim();
-  if (prompt.length<5) { showError("#form-error","请至少输入 5 个字的创意描述。"); return; }
+  if (state.briefKind === "creative" && prompt.length<5) { showError("#form-error","请至少输入 5 个字的创意描述。"); return; }
   const serial = ++state.serial;
   $("#generate").disabled = true; $("#generate").classList.add("loading");
   $("#generate span").textContent = $("#generation-mode").value === "ai" ? "AI 正在编写故事…" : "正在编排分镜…";
   showError("#form-error");
   try {
-    const project = await api("/api/projects",{method:"POST",body:JSON.stringify({prompt,style:state.style,aspect:state.aspect,duration:Number($("#duration").value),mode:$("#generation-mode").value})});
+    const settings = {style:state.style, aspect:state.aspect, duration:Number($("#duration").value)};
+    const merchant = Object.fromEntries(["store_name", "product", "selling_point", "offer", "address", "cta"].map(key => [key, $(`#merchant-${key.replaceAll("_", "-")}`).value.trim()]));
+    const body = state.briefKind === "merchant" ? {...settings, ...merchant, example:state.merchantExample} : {...settings, prompt, mode:$("#generation-mode").value};
+    const project = await api(state.briefKind === "merchant" ? "/api/merchant-projects" : "/api/projects", {method:"POST",body:JSON.stringify(body)});
     await refreshProjects();
     if (serial !== state.serial) return;
     state.current = project; state.dirty = false; state.scene = 0; state.job = null;
@@ -368,11 +380,11 @@ $("#export-video").addEventListener("click",async()=> {
     if(!(await saveBoard())) { $("#export-video").disabled=false; return; }
     const id=state.current.id;
     $("#export-video").disabled=true;
-    const job=await api(`/api/projects/${id}/render`,{method:"POST",body:JSON.stringify({version:state.current.version,music:$("#music").checked})});
+    const job=await api(`/api/projects/${id}/render`,{method:"POST",body:JSON.stringify({version:state.current.version,music:$("#music").checked,narration:$("#narration").checked})});
     if(state.current?.id===id)handleJob(job);
   } catch(error){showError("#export-error",error.message);$("#export-video").disabled=false;}
 });
-$("#music").addEventListener("change",async()=> {
+for (const control of [$("#music"), $("#narration")]) control.addEventListener("change",async()=> {
   clearTimeout(state.poll); state.job=null; resetExport();
   if(!state.current)return;
   showScene(state.scene);
@@ -380,7 +392,7 @@ $("#music").addEventListener("change",async()=> {
   try{
     const jobs=await api(`/api/projects/${id}/jobs`);
     if(state.current?.id!==id)return;
-    const matching=jobs.find(j=>j.version===state.current.version&&j.music===$("#music").checked);
+    const matching=jobs.find(j=>j.version===state.current.version&&j.music===$("#music").checked&&Boolean(j.narration)===$("#narration").checked);
     if(matching)handleJob(matching);
   }catch(error){toast(error.message,true);}
 });
@@ -409,9 +421,51 @@ async function init(){
   try{
     const [config,,health]=await Promise.all([api("/api/config"),refreshProjects(),api("/api/health")]);
     state.config=config;
+    $("#narration").disabled = !config.narration_available;
+    $("#narration").checked = config.narration_available;
+    $("#narration-note").textContent = config.narration_note + "。开启后自动延长过短镜头，最长 120 秒。";
     $("#examples").innerHTML=config.examples.map((ex,i)=>`<button type="button" class="example-chip" data-example="${i}">${esc(ex.label)} ↗</button>`).join("");
     const ai=$("#generation-mode option[value=ai]");ai.disabled=!config.ai_available;ai.textContent=config.ai_available?"DeepSeek AI · 已连接":"DeepSeek AI · 尚未配置";
     if(health.status!=="ok")throw new Error("视频合成环境未就绪，请查看启动日志。");
   }catch(error){$("#connection").classList.add("offline");$("#connection").innerHTML='<span class="status-dot"></span>服务连接异常';showError("#form-error",error.message);}
 }
+function setBriefKind(kind) {
+  state.briefKind = kind;
+  $("#merchant-fields").hidden = kind !== "merchant";
+  $("#creative-fields").hidden = kind !== "creative";
+  $$("#merchant-fields input").forEach(el => el.disabled = kind !== "merchant");
+  $("#prompt").disabled = kind !== "creative"; $("#prompt").required = kind === "creative";
+  $(".generation-mode").hidden = kind !== "creative";
+  $$("[data-brief]").forEach(el => { el.classList.toggle("selected", el.dataset.brief === kind); el.setAttribute("aria-pressed", el.dataset.brief === kind); });
+  $("#generation-note").textContent = kind === "merchant" ? "门店模板 · 无需密钥 · 信息只保存在本机" : "本地模板可自由修改；选择 AI 时会将创意发送至 DeepSeek。";
+}
+$(".brief-tabs").addEventListener("click", event => { const button = event.target.closest("[data-brief]"); if (button) setBriefKind(button.dataset.brief); });
+$("#merchant-example").addEventListener("click", () => {
+  const example = {store_name:"拾光咖啡（演示）", product:"桂花拿铁", selling_point:"桂花香气，搭配柔和奶香。临窗坐坐，给午后留一点空闲。", offer:"", address:"示例城市 · 春日路 18 号（虚构地址）", cta:"欢迎到店，喝一杯喜欢的咖啡。"};
+  for (const [key, value] of Object.entries(example)) $(`#merchant-${key.replaceAll("_", "-")}`).value = value;
+  state.merchantExample = true; $("#merchant-example-note").hidden = false; setStyle("editorial");
+});
+$("#scenes").addEventListener("change", async event => {
+  const input = event.target.closest("[data-upload]"); if (!input || !input.files[0]) return;
+  const file = input.files[0], card = input.closest(".scene-card"), id = state.current.id;
+  if (file.size > 8*1024*1024) { toast("照片不能超过 8 MB。", true); input.value = ""; return; }
+  state.uploading++; input.disabled = true; card.querySelector(".remove-photo").disabled = true;
+  card.querySelector(".photo-status").textContent = "正在上传…";
+  try {
+    const photo = await api(`/api/projects/${id}/assets`, {method:"POST", body:file, headers:{"Content-Type":file.type || "application/octet-stream"}});
+    card.dataset.assetId = photo.asset_id;
+    card.querySelector(".photo-status").textContent = "照片已上传 · 保存后更新预览";
+    card.querySelector(".remove-photo").hidden = false;
+    markDirty();
+  } catch (error) {
+    card.querySelector(".photo-status").textContent = card.dataset.assetId ? "保留原照片" : "尚未上传 · 使用图形背景";
+    showError("#save-error", error.message);
+  } finally { state.uploading--; input.disabled = false; input.value = ""; card.querySelector(".remove-photo").disabled = false; }
+});
+$("#scenes").addEventListener("click", event => {
+  const button = event.target.closest(".remove-photo"); if (!button || state.saving || state.uploading) return;
+  const card = button.closest(".scene-card"); card.dataset.assetId = ""; button.hidden = true;
+  card.querySelector(".photo-status").textContent = "使用图形背景 · 保存后更新"; markDirty();
+});
+setBriefKind("merchant");
 init();

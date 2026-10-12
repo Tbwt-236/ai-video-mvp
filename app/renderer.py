@@ -1,5 +1,7 @@
 """Deterministic motion-design renderer; no network or generative-video claims."""
 import math
+import copy
+import json
 import os
 import shutil
 import struct
@@ -9,7 +11,9 @@ from functools import lru_cache
 from pathlib import Path
 
 import imageio_ffmpeg
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
+
+from .narration import NarrationError, synthesize
 
 ROOT = Path(__file__).resolve().parents[1]
 SIZES = {"9:16": (720, 1280), "16:9": (1280, 720), "1:1": (720, 720)}
@@ -52,7 +56,7 @@ def text_block(draw, text, x, y, width, height, size, fill):
         y += int(size * 1.48)
 
 
-def scene_image(project, index, size=None):
+def scene_image(project, index, size=None, asset_dir=None):
     w, h = size or SIZES[project["aspect"]]
     scene = project["scenes"][index]
     dark, mid, accent, light = PALETTES[project["style"]]
@@ -97,8 +101,23 @@ def scene_image(project, index, size=None):
             delta = n*max(2, radius//10)
             draw.ellipse((cx-radius+delta//2, cy-radius+delta, cx+radius-delta//2, cy+radius-delta), outline=accent, width=2)
         draw.ellipse((cx-7, cy-7, cx+7, cy+7), fill=light)
+    if scene.get("asset_id"):
+        if asset_dir is None:
+            raise ValueError("缺少门店照片目录")
+        with Image.open(asset_dir / f"{scene['asset_id']}.jpg") as photo:
+            im = ImageOps.fit(photo.convert("RGB"), (w, h), Image.Resampling.LANCZOS)
+        overlay = Image.new("RGBA", (w, h))
+        shade = ImageDraw.Draw(overlay)
+        for y in range(h):
+            alpha = int(35 + 195 * max(0, min(1, (y/h - .27) / .51)))
+            if y < h*.16:
+                alpha = max(alpha, int(115*(1-y/(h*.16))))
+            shade.line((0, y, w, y), fill=(*dark, alpha))
+        im = Image.alpha_composite(im.convert("RGBA"), overlay).convert("RGB")
+        draw = ImageDraw.Draw(im)
     scale = min(w, h) / 720
-    draw.text((margin, margin), "F R A M E   /   STUDIO", font=font(max(12, int(16*scale))), fill=light, anchor="lt")
+    brand = project.get("merchant", {}).get("store_name", "F R A M E   /   STUDIO")
+    text_block(draw, brand, margin, margin, w-2*margin-100*scale, h*.07, max(12, int(16*scale)), light)
     draw.text((w-margin, margin), f"{index+1:02d} / {len(project['scenes']):02d}", font=font(max(12, int(16*scale))), fill=accent, anchor="rt")
     heading_y = int(h*.565)
     text_block(draw, scene["heading"], margin, heading_y, w-2*margin, h*.175, int(56*scale), light)
@@ -116,9 +135,9 @@ def make_music(path, duration):
         out.setnchannels(1)
         out.setsampwidth(2)
         out.setframerate(rate)
-        for second in range(duration):
+        for second in range(math.ceil(duration)):
             buffer = bytearray()
-            for i in range(rate):
+            for i in range(min(rate, round(duration*rate)-second*rate)):
                 t = second + i / rate
                 fade = min(1, t / 1.5, (duration-t) / 2)
                 sample = sum(math.sin(2*math.pi*f*t) * (.7 + .3*math.sin(t*.4+j)) for j, f in enumerate(chord)) / len(chord)
@@ -133,26 +152,42 @@ def run_ffmpeg(args, timeout=120):
         raise RuntimeError("FFmpeg 合成失败: " + result.stderr.decode(errors="replace")[-1200:])
 
 
-def srt(project):
+def srt(project, narrated=False):
     def stamp(seconds):
-        return f"{seconds//3600:02d}:{seconds//60%60:02d}:{seconds%60:02d},000"
+        milliseconds = round(seconds * 1000)
+        seconds, ms = divmod(milliseconds, 1000)
+        return f"{seconds//3600:02d}:{seconds//60%60:02d}:{seconds%60:02d},{ms:03d}"
     chunks, start = [], 0
     for i, scene in enumerate(project["scenes"]):
         end = start + scene["duration"]
-        chunks.append(f"{i+1}\n{stamp(start)} --> {stamp(end)}\n{scene['heading']}\n{scene['caption']}\n")
+        cue_start = start + (.3 if narrated else 0)
+        cue_end = start + .3 + scene["speech_duration"] if narrated else end
+        text = scene['caption'] if narrated else f"{scene['heading']}\n{scene['caption']}"
+        chunks.append(f"{i+1}\n{stamp(cue_start)} --> {stamp(cue_end)}\n{text}\n")
         start = end
     return "\n".join(chunks)
 
 
-def render(project, directory, music, progress):
+def render(project, directory, music, progress, asset_dir=None, narration=False):
+    project = copy.deepcopy(project)
     directory.mkdir(parents=True, exist_ok=True)
     scratch = directory / "tmp"
     scratch.mkdir(exist_ok=True)
     w, h = SIZES[project["aspect"]]
     try:
+        if narration:
+            for i, scene in enumerate(project["scenes"]):
+                progress(4 + i, f"正在朗读字幕 {i+1} / {len(project['scenes'])}")
+                spoken = synthesize(scene["caption"], scratch/f"voice-{i}.wav", run_ffmpeg)
+                scene["speech_duration"] = spoken
+                scene["duration"] = max(scene["duration"], math.ceil((spoken+.6)*FPS)/FPS)
+            if sum(s["duration"] for s in project["scenes"]) > 120:
+                raise NarrationError("配音后超过 120 秒，请精简字幕后重试。")
         for i, scene in enumerate(project["scenes"]):
-            scene_image(project, i).save(scratch / f"scene-{i}.png")
-            frames = scene["duration"] * FPS
+            scene_image(project, i, asset_dir=asset_dir).save(scratch / f"scene-{i}.png")
+            if i == 0:
+                shutil.copyfile(scratch / "scene-0.png", directory / "cover.png")
+            frames = round(scene["duration"] * FPS)
             filters = (f"scale={w*2}:{h*2},zoompan=z='min(1+on*0.00022,1.04)':"
                        f"x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d={frames}:s={w}x{h}:fps={FPS},"
                        f"fade=t=in:d=0.25,fade=t=out:st={scene['duration']-.25}:d=0.25,format=yuv420p")
@@ -163,13 +198,36 @@ def render(project, directory, music, progress):
         (scratch/"clips.txt").write_text("\n".join(f"file 'clip-{i}.mp4'" for i in range(len(project["scenes"]))), encoding="utf-8")
         duration = sum(s["duration"] for s in project["scenes"])
         args = ["-f", "concat", "-safe", "0", "-i", str(scratch/"clips.txt")]
+        if narration:
+            progress(87, "正在对齐中文配音与字幕")
+            for i, scene in enumerate(project["scenes"]):
+                run_ffmpeg(["-i", str(scratch/f"voice-{i}.wav"), "-af", "adelay=300:all=1,apad",
+                            "-t", str(scene["duration"]), str(scratch/f"padded-{i}.wav")])
+            (scratch/"voices.txt").write_text("\n".join(f"file 'padded-{i}.wav'" for i in range(len(project["scenes"]))), encoding="utf-8")
+            run_ffmpeg(["-f", "concat", "-safe", "0", "-i", str(scratch/"voices.txt"), "-c:a", "pcm_s16le", str(scratch/"voice.wav")])
+            args += ["-i", str(scratch/"voice.wav")]
         if music:
             progress(88, "正在合成氛围音轨")
             make_music(scratch/"music.wav", duration)
-            args += ["-i", str(scratch/"music.wav"), "-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "128k"]
+            args += ["-i", str(scratch/"music.wav")]
+        if narration and music:
+            args += ["-filter_complex", "[2:a]volume=0.20[bed];[1:a][bed]amix=inputs=2:duration=first:normalize=0[audio]",
+                     "-map", "0:v:0", "-map", "[audio]"]
+        elif narration or music:
+            args += ["-map", "0:v:0", "-map", "1:a:0"]
+        if narration or music:
+            args += ["-c:a", "aac", "-b:a", "128k"]
         args += ["-c:v", "copy", "-t", str(duration), "-movflags", "+faststart", str(directory/"video.part.mp4")]
         run_ffmpeg(args)
         (directory/"video.part.mp4").replace(directory/"video.mp4")
-        (directory/"subtitles.srt").write_text(srt(project), encoding="utf-8")
+        (directory/"subtitles.srt").write_text(srt(project, narrated=narration), encoding="utf-8")
+        project["duration"] = duration
+        project["narration"] = narration
+        (directory/"storyboard.json").write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8")
+        copy_text = project["title"] + "\n\n" + "\n".join(s["caption"] for s in project["scenes"])
+        if project.get("example"):
+            copy_text = "【虚构演示，请替换门店信息后再发布】\n" + copy_text
+        (directory/"post.txt").write_text(copy_text, encoding="utf-8")
+        return {"duration": round(duration, 3)}
     finally:
         shutil.rmtree(scratch, ignore_errors=True)

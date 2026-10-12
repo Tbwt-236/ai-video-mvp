@@ -23,6 +23,7 @@ class Scene(BaseModel):
     heading: str = Field(min_length=1, max_length=32)
     caption: str = Field(min_length=1, max_length=96)
     duration: int = Field(ge=2, le=20)
+    asset_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
 
     @field_validator("heading", "caption")
     @classmethod
@@ -57,3 +58,25 @@ class ProjectEdit(BaseModel):
 class RenderRequest(BaseModel):
     version: int = Field(ge=1)
     music: bool = True
+    narration: bool = False
+
+
+class MerchantBrief(BaseModel):
+    store_name: str = Field(min_length=1, max_length=24)
+    product: str = Field(min_length=1, max_length=32)
+    selling_point: str = Field(min_length=1, max_length=48)
+    offer: str = Field(default="", max_length=40)
+    address: str = Field(min_length=1, max_length=48)
+    cta: str = Field(default="欢迎到店，喝一杯喜欢的咖啡。", min_length=1, max_length=32)
+    style: Literal["cinema", "editorial", "tech"] = "editorial"
+    aspect: Literal["9:16", "16:9", "1:1"] = "9:16"
+    duration: Literal[15, 30, 45, 60] = 15
+    example: bool = False
+
+    @field_validator("store_name", "product", "selling_point", "address", "cta", "offer")
+    @classmethod
+    def clean_merchant_text(cls, value, info):
+        value = " ".join(value.split())
+        if not value and info.field_name != "offer":
+            raise ValueError("请填写门店信息")
+        return value
