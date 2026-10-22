@@ -45,10 +45,11 @@ def wrapped(draw, text, face, width):
 
 
 def text_block(draw, text, x, y, width, height, size, fill):
-    while size > 14:
+    size = max(8, size)
+    while True:
         face = font(size)
         lines = wrapped(draw, text, face, width)
-        if len(lines) * size * 1.48 <= height:
+        if len(lines) * size * 1.48 <= height or size <= 8:
             break
         size -= 1
     for line in lines:
@@ -60,6 +61,9 @@ def scene_image(project, index, size=None, asset_dir=None):
     w, h = size or SIZES[project["aspect"]]
     scene = project["scenes"][index]
     dark, mid, accent, light = PALETTES[project["style"]]
+    if project.get("accent_color"):
+        value = project["accent_color"].lstrip("#")
+        accent = tuple(int(value[i:i+2], 16) for i in (0, 2, 4))
     im = Image.new("RGB", (w, h))
     draw = ImageDraw.Draw(im)
     # A restrained vertical gradient keeps typography readable in every ratio.
@@ -105,11 +109,26 @@ def scene_image(project, index, size=None, asset_dir=None):
         if asset_dir is None:
             raise ValueError("缺少门店照片目录")
         with Image.open(asset_dir / f"{scene['asset_id']}.jpg") as photo:
-            im = ImageOps.fit(photo.convert("RGB"), (w, h), Image.Resampling.LANCZOS)
+            photo = photo.convert("RGB")
+            if scene.get("photo_fit") == "contain":
+                contained = ImageOps.contain(photo, (w, h), Image.Resampling.LANCZOS)
+                im = Image.new("RGB", (w, h), dark)
+                im.paste(contained, ((w-contained.width)//2, (h-contained.height)//2))
+            else:
+                zoom = scene.get("zoom", 1)
+                crop_w = min(photo.width, photo.height*w/h) / zoom
+                crop_h = crop_w*h/w
+                left = (photo.width-crop_w)*scene.get("crop_x", .5)
+                top = (photo.height-crop_h)*scene.get("crop_y", .5)
+                im = photo.resize((w, h), Image.Resampling.LANCZOS, box=(left, top, left+crop_w, top+crop_h))
         overlay = Image.new("RGBA", (w, h))
         shade = ImageDraw.Draw(overlay)
         for y in range(h):
             alpha = int(35 + 195 * max(0, min(1, (y/h - .27) / .51)))
+            position = scene.get("text_position", "bottom")
+            if position != "bottom":
+                center = .49 if position == "center" else .29
+                alpha = int(35 + 180*max(0, 1-abs(y/h-center)/.37))
             if y < h*.16:
                 alpha = max(alpha, int(115*(1-y/(h*.16))))
             shade.line((0, y, w, y), fill=(*dark, alpha))
@@ -119,9 +138,11 @@ def scene_image(project, index, size=None, asset_dir=None):
     brand = project.get("merchant", {}).get("store_name", "F R A M E   /   STUDIO")
     text_block(draw, brand, margin, margin, w-2*margin-100*scale, h*.07, max(12, int(16*scale)), light)
     draw.text((w-margin, margin), f"{index+1:02d} / {len(project['scenes']):02d}", font=font(max(12, int(16*scale))), fill=accent, anchor="rt")
-    heading_y = int(h*.565)
+    heading_fraction = {"bottom": .565, "center": .34, "top": .16}[scene.get("text_position", "bottom")]
+    heading_y = int(h*heading_fraction)
     text_block(draw, scene["heading"], margin, heading_y, w-2*margin, h*.175, int(56*scale), light)
-    text_block(draw, scene["caption"], margin, int(h*.77), w-2*margin, h*.135, int(25*scale), accent)
+    caption_color = accent if sum(accent) > 250 else light
+    text_block(draw, scene["caption"], margin, int(h*(heading_fraction+.205)), w-2*margin, h*.135, int(25*scale), caption_color)
     draw.line((margin, h-margin, w-margin, h-margin), fill=mid, width=2)
     draw.line((margin, h-margin, margin+int((w-2*margin)*(index+1)/len(project["scenes"])), h-margin), fill=accent, width=3)
     return im
@@ -185,11 +206,19 @@ def render(project, directory, music, progress, asset_dir=None, narration=False)
                 raise NarrationError("配音后超过 120 秒，请精简字幕后重试。")
         for i, scene in enumerate(project["scenes"]):
             scene_image(project, i, asset_dir=asset_dir).save(scratch / f"scene-{i}.png")
-            if i == 0:
-                shutil.copyfile(scratch / "scene-0.png", directory / "cover.png")
+            if i == min(project.get("cover_scene", 0), len(project["scenes"])-1):
+                shutil.copyfile(scratch / f"scene-{i}.png", directory / "cover.png")
             frames = round(scene["duration"] * FPS)
-            filters = (f"scale={w*2}:{h*2},zoompan=z='min(1+on*0.00022,1.04)':"
-                       f"x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d={frames}:s={w}x{h}:fps={FPS},"
+            mode = scene.get("motion", "zoom_in")
+            zoom = {"zoom_in": "min(1+on*0.00022,1.04)", "zoom_out": "max(1.04-on*0.00022,1)",
+                    "still": "1", "pan_left": "1.04", "pan_right": "1.04"}[mode]
+            horizontal = "iw/2-iw/zoom/2"
+            if mode == "pan_left":
+                horizontal = f"(iw-iw/zoom)*(1-on/{max(1,frames-1)})"
+            elif mode == "pan_right":
+                horizontal = f"(iw-iw/zoom)*on/{max(1,frames-1)}"
+            filters = (f"scale={w*2}:{h*2},zoompan=z='{zoom}':"
+                       f"x='{horizontal}':y='ih/2-ih/zoom/2':d={frames}:s={w}x{h}:fps={FPS},"
                        f"fade=t=in:d=0.25,fade=t=out:st={scene['duration']-.25}:d=0.25,format=yuv420p")
             run_ffmpeg(["-i", str(scratch/f"scene-{i}.png"), "-vf", filters,
                         "-frames:v", str(frames), "-an", "-c:v", "libx264", "-preset", "veryfast",

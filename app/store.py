@@ -21,10 +21,12 @@ class Store:
         con.execute("PRAGMA journal_mode=WAL")
         return con
 
-    def projects(self):
+    def projects(self, include_archived=False):
         with self.connect() as con:
             rows = con.execute("SELECT body FROM projects").fetchall()
-        return sorted((json.loads(r[0]) for r in rows), key=lambda p: p["updated_at"], reverse=True)
+        projects = (json.loads(r[0]) for r in rows)
+        return sorted((p for p in projects if include_archived or not p.get("archived")),
+                      key=lambda p: p["updated_at"], reverse=True)
 
     def get_project(self, pid):
         with self.connect() as con:

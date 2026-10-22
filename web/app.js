@@ -4,8 +4,9 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const icon = (name) => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const esc = (value) => String(value).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const E = window.FrameEditor;
 const state = {projects: [], current: null, style: "cinema", aspect: "9:16", scene: 0,
-  dirty: false, playing: false, job: null, poll: null, playTimer: null, saving: false, serial: 0, config: null, briefKind: "merchant", merchantExample: false, uploading: 0};
+  dirty: false, playing: false, job: null, poll: null, playTimer: null, saving: false, serial: 0, config: null, briefKind: "merchant", merchantExample: false, uploading: 0, draft:null, assets:[], history:[], future:[], pendingDraft:null, previewRevision:0, previewController:null, previewObject:null, previewTimer:null, mediaTarget:0, lastEditAt:0, lastEditKey:""};
 let toastTimer;
 
 function toast(message, error = false) {
@@ -38,7 +39,7 @@ function showError(selector, message = "") {
 }
 
 function seconds(value) { return `${String(Math.floor(value/60)).padStart(2,"0")}:${String(value%60).padStart(2,"0")}`; }
-function total() { return state.current ? state.current.scenes.reduce((sum,s) => sum + Number(s.duration),0) : Number($("#duration").value); }
+function total() { return state.draft ? state.draft.scenes.reduce((sum,s) => sum + (Number(s.duration)||0),0) : Number($("#duration").value); }
 function previewUrl(project, index) { return `/api/projects/${project.id}/scenes/${index}.png?v=${project.version}`; }
 
 function setPage(page) {
@@ -58,14 +59,20 @@ function setStep(step) {
   $("#step-export").disabled = !state.current;
 }
 
-function canLeave() { if (state.uploading) { toast("照片正在上传，请稍候。", true); return false; } return !state.dirty || window.confirm("分镜有未保存的修改，确定离开并放弃这些修改吗？"); }
+function canLeave() {
+  if (state.uploading || state.saving) { toast("请等待照片上传或保存完成。", true); return false; }
+  if (state.dirty) persistDraft();
+  return true;
+}
 
 function newProject() {
   if (!canLeave()) return;
   state.serial++;
   clearTimeout(state.poll);
   stopPreview();
-  state.current = null; state.job = null; state.dirty = false;
+  state.current = null; state.draft = null; state.assets = []; state.job = null; state.dirty = false;
+  clearTimeout(state.previewTimer); state.previewController?.abort(); state.previewRevision++;
+  $("#history-panel").hidden = true;
   $("#brief-form").reset(); state.merchantExample = false; $("#merchant-example-note").hidden = true;
   $("#narration").checked = Boolean(state.config?.narration_available);
   setBriefKind(state.briefKind);
@@ -117,21 +124,22 @@ function updateStage(aspect) {
 }
 
 function renderRecent() {
-  $("#project-count").textContent = state.projects.length;
-  $("#recent-projects").innerHTML = state.projects.slice(0,6).map(project =>
+  const projects = state.projects.filter(p=>!p.archived);
+  $("#project-count").textContent = projects.length;
+  $("#recent-projects").innerHTML = projects.slice(0,6).map(project =>
     `<button class="recent-item ${state.current?.id===project.id ? "selected" : ""}" data-project="${project.id}" data-style="${project.style}" title="${esc(project.title)}"><i></i><span>${esc(project.title)}</span></button>`).join("");
 }
 
 function renderLibrary() {
-  const query = $("#project-search").value.trim().toLowerCase();
-  const projects = state.projects.filter(p => `${p.title} ${p.prompt}`.toLowerCase().includes(query));
-  $("#library-count").textContent = state.projects.length;
+  const query = $("#project-search").value.trim().toLowerCase(), filter = $("#library-filter").value;
+  const projects = state.projects.filter(p => (filter === "all" || Boolean(p.archived) === (filter === "archived")) && `${p.title} ${p.prompt}`.toLowerCase().includes(query));
+  $("#library-count").textContent = projects.length;
   $("#library-grid").innerHTML = projects.length ? projects.map(p =>
-    `<button class="project-card" data-project="${p.id}"><div class="project-cover"><img src="${previewUrl(p,0)}" alt="${esc(p.title)}封面" loading="lazy"><span>${p.example ? "示例作品" : p.source === "deepseek" ? "AI 分镜" : "本地模板"}</span></div><h3>${esc(p.title)}</h3><p>${p.aspect} · ${p.duration} 秒 · ${p.scenes.length} 个分镜</p><div><span>${new Date(p.updated_at).toLocaleDateString("zh-CN")}</span><span>继续创作 ↗</span></div></button>`).join("") : `<div class="empty-library">${query ? "没有找到匹配的作品，试试其他关键词。" : "你的第一个故事，从一个想法开始。"}</div>`;
+    `<article class="project-card"><button class="project-cover project-open" data-project="${p.id}" aria-label="打开 ${esc(p.title)}"><img src="${previewUrl(p,p.cover_scene||0)}" alt="${esc(p.title)}封面" loading="lazy"><span>${p.archived ? "已归档" : p.example ? "示例作品" : p.source === "deepseek" ? "AI 分镜" : p.source === "merchant_template" ? "门店宣传" : "本地模板"}</span></button><h3>${esc(p.title)}</h3><p>${p.aspect} · ${p.duration} 秒 · ${p.scenes.length} 个分镜</p><div class="project-actions"><button data-project="${p.id}">打开作品</button><button data-project-action="duplicate" data-id="${p.id}">复制</button><button data-project-action="${p.archived ? "restore":"archive"}" data-id="${p.id}">${p.archived ? "恢复":"归档"}</button></div><small class="project-updated">${new Date(p.updated_at).toLocaleDateString("zh-CN")}</small></article>`).join("") : `<div class="empty-library">${query ? "没有找到匹配的作品，试试其他关键词。" : filter === "archived" ? "还没有归档作品。归档后仍可恢复。" : "还没有作品，从一支短片开始。"}</div>`;
 }
 
 async function refreshProjects() {
-  state.projects = await api("/api/projects"); renderRecent();
+  state.projects = await api("/api/projects?include_archived=true"); renderRecent();
   if (!$("#library-view").hidden) renderLibrary();
 }
 
@@ -145,8 +153,9 @@ async function openProject(id) {
     state.current = project; state.dirty = false; state.scene = 0; state.job = null;
     displayBoard(); setPage("studio"); renderRecent();
     window.scrollTo({top:0, behavior:"smooth"});
-    const jobs = await api(`/api/projects/${id}/jobs`);
+    const [jobs, assets] = await Promise.all([api(`/api/projects/${id}/jobs`),api(`/api/projects/${id}/assets`)]);
     if (serial !== state.serial) return;
+    state.assets = assets; renderHistory(jobs);
     const matching = jobs.find(j => j.version === project.version);
     if (matching) { $("#music").checked = matching.music; $("#narration").checked = Boolean(matching.narration); handleJob(matching); }
   } catch (error) { toast(error.message, true); }
@@ -154,50 +163,127 @@ async function openProject(id) {
 
 function displayBoard() {
   const p = state.current;
+  state.draft = E.editable(p); state.assets = []; resetHistory();
+  $("#custom-color").checked = Boolean(p.accent_color); $("#accent-color").value = p.accent_color || "#c2d69b";
+  $("#history-panel").hidden = true;
   $("#brief-panel").hidden = true; $("#storyboard-panel").hidden = false;
   $("#project-title").value = p.title; $("#board-style").value = p.style; $("#board-aspect").value = p.aspect;
   $("#board-source").textContent = p.source === "merchant_template" ? (p.example ? "◈ 虚构门店示例" : "◈ 门店信息模板") : p.source === "deepseek" ? "✳ DeepSeek AI 分镜" : "◈ 本地模板 · 可自由编辑";
   $("#save-status").textContent = "已保存至本地";
   showError("#save-error"); showError("#export-error");
-  renderScenes(); updateBoardTotal(); showScene(0); setStep(2); resetExport();
+  renderScenes(); updateBoardTotal(); showScene(0); setStep(2); resetExport(); findDraft();
 }
 
+function assetUrl(asset) { return `/api/projects/${state.current.id}/assets/${asset}.jpg`; }
+function options(values, current) { return values.map(([key,label])=>`<option value="${key}" ${key===current ? "selected":""}>${label}</option>`).join(""); }
 function renderScenes() {
-  const p = state.current;
-  $("#scenes").innerHTML = p.scenes.map((scene,i) =>
-    `<article class="scene-card ${i===state.scene ? "active":""}" data-index="${i}" data-asset-id="${esc(scene.asset_id || "")}"><div class="scene-card-head"><span class="scene-number">${String(i+1).padStart(2,"0")}</span><span>${i===0 ? "开场 · 留住注意" : i===p.scenes.length-1 ? "收束 · 留下余韵" : "展开 · 讲述故事"}</span><label>时长 <input type="number" min="2" max="20" step="1" value="${scene.duration}" data-field="duration" aria-label="分镜 ${i+1} 时长">秒</label></div><div class="scene-content"><button class="scene-thumb" data-preview="${i}" aria-label="预览分镜 ${i+1}"><img src="${previewUrl(p,i)}" alt="分镜 ${i+1}" loading="lazy"></button><div><label for="heading-${i}">画面标题</label><input id="heading-${i}" data-field="heading" maxlength="32" value="${esc(scene.heading)}" required><label for="caption-${i}">画面字幕</label><textarea id="caption-${i}" data-field="caption" maxlength="96" required>${esc(scene.caption)}</textarea><div class="scene-counter">${scene.caption.length} / 96</div></div></div><div class="scene-photo"><label class="photo-upload">${icon("plus")} ${scene.asset_id ? "更换照片" : "上传门店照片"}<input type="file" accept="image/jpeg,image/png,image/webp" data-upload="${i}" aria-label="分镜 ${i+1} 照片"></label><span class="photo-status">${scene.asset_id ? "已使用照片" : "尚未上传 · 使用图形背景"}</span><button type="button" class="remove-photo" ${scene.asset_id ? "" : "hidden"}>移除照片</button></div></article>`).join("");
+  const p = state.draft;
+  $("#scenes").innerHTML = p.scenes.map((scene,i) => {
+    const source = scene.asset_id ? assetUrl(scene.asset_id) : i < state.current.scenes.length ? previewUrl(state.current,i) : "/favicon.svg";
+    return `<article class="scene-card ${i===state.scene ? "active":""}" data-index="${i}" data-asset-id="${esc(scene.asset_id || "")}">
+      <div class="scene-card-head"><span class="scene-number">${String(i+1).padStart(2,"0")}</span><span>${p.cover_scene===i ? "★ 封面分镜" : "分镜画面"}</span><label>时长 <input type="number" min="2" max="20" step="1" value="${scene.duration}" data-field="duration" aria-label="分镜 ${i+1} 时长">秒</label></div>
+      <div class="scene-content"><button class="scene-thumb" data-preview="${i}" aria-label="预览分镜 ${i+1}"><img src="${source}" alt="分镜 ${i+1}" loading="lazy"></button><div><label for="heading-${i}">画面标题</label><input id="heading-${i}" data-field="heading" maxlength="32" value="${esc(scene.heading)}" required><label for="caption-${i}">画面字幕</label><textarea id="caption-${i}" data-field="caption" maxlength="96" required>${esc(scene.caption)}</textarea><div class="scene-counter">${scene.caption.length} / 96</div></div></div>
+      <div class="scene-photo"><label class="photo-upload">${icon("plus")} ${scene.asset_id ? "更换照片" : "上传照片"}<input type="file" accept="image/jpeg,image/png,image/webp" data-upload="${i}" aria-label="分镜 ${i+1} 照片"></label><button class="text-button" data-media="${i}">从照片库选择</button><button type="button" class="remove-photo" ${scene.asset_id ? "" : "hidden"}>移除照片</button><span class="photo-status">${scene.asset_id ? "使用门店照片" : "使用图形背景"}</span></div>
+      <details class="composition"><summary>画面构图 <small>裁切 · 文字 · 运动</small></summary><div class="composition-grid">
+        <label>照片适配<select data-field="photo_fit" aria-label="照片适配">${options([["cover","铺满画面"],["contain","完整展示"]],scene.photo_fit)}</select></label>
+        <label>文字位置<select data-field="text_position" aria-label="文字位置">${options([["bottom","下方"],["center","居中"],["top","上方"]],scene.text_position)}</select></label>
+        <label>镜头运动<select data-field="motion" aria-label="镜头运动">${options([["zoom_in","缓慢推进"],["zoom_out","缓慢拉远"],["still","静止画面"],["pan_left","向左移动"],["pan_right","向右移动"]],scene.motion)}</select></label>
+        <label>照片放大 <output data-output="zoom">${Number(scene.zoom).toFixed(1)}×</output><input data-field="zoom" type="range" min="1" max="2" step="0.05" value="${scene.zoom}" aria-label="分镜 ${i+1} 照片放大"></label>
+        <label>横向取景 <output data-output="crop_x">${Math.round(scene.crop_x*100)}%</output><input data-field="crop_x" type="range" min="0" max="1" step="0.01" value="${scene.crop_x}" aria-label="分镜 ${i+1} 横向取景"></label>
+        <label>纵向取景 <output data-output="crop_y">${Math.round(scene.crop_y*100)}%</output><input data-field="crop_y" type="range" min="0" max="1" step="0.01" value="${scene.crop_y}" aria-label="分镜 ${i+1} 纵向取景"></label>
+      </div><p>取景与放大仅对「铺满画面」生效，点击缩略图检查当前镜头。</p></details>
+      <div class="scene-actions"><button data-scene-action="up" ${i===0 ? "disabled":""} aria-label="上移分镜 ${i+1}">↑ 上移</button><button data-scene-action="down" ${i===p.scenes.length-1 ? "disabled":""} aria-label="下移分镜 ${i+1}">↓ 下移</button><button data-scene-action="duplicate">复制</button><button data-scene-action="cover" ${p.cover_scene===i ? "disabled":""}>设为封面</button><button data-scene-action="remove" ${p.scenes.length===1 ? "disabled":""}>删除</button></div>
+    </article>`;
+  }).join("");
 }
 
+function collectEdit() {
+  const scenes = $$(".scene-card").map((card,i) => {
+    const item = E.scene(state.draft.scenes[i]);
+    card.querySelectorAll("[data-field]").forEach(input=> {
+      item[input.dataset.field] = ["duration","crop_x","crop_y","zoom"].includes(input.dataset.field) ? Number(input.value) : input.value.trim();
+    });
+    item.asset_id = card.dataset.assetId || null;
+    return item;
+  });
+  return {title:$("#project-title").value.trim(),style:$("#board-style").value,aspect:$("#board-aspect").value,scenes,
+    cover_scene:state.draft.cover_scene,accent_color:$("#custom-color").checked ? $("#accent-color").value : null};
+}
+function readEdit() { return {...E.validate(collectEdit()), version:state.current.version}; }
 function updateBoardTotal() {
-  $("#board-total").textContent = `${state.current.scenes.length} 个分镜 · 共 ${total()} 秒`;
-  if (total() > 60) showError("#save-error", "总时长超过 60 秒，请缩短部分分镜。");
-  else showError("#save-error");
+  $("#board-total").textContent = `${state.draft.scenes.length} 个分镜 · 共 ${total()} 秒`;
+  try { E.validate(state.draft); showError("#save-error"); }
+  catch (error) { showError("#save-error",error.message); }
 }
-
-function markDirty() {
-  state.dirty = true; stopPreview();
-  if (!$("#final-video").hidden) showScene(state.scene);
-  $("#save-status").textContent = "有未保存的修改";
-  $("#preview-hint").textContent = "当前显示已保存版本，保存分镜后更新";
-  $("#download-actions").hidden = true; $("#export-video").hidden = false;
-  $("#export-video").disabled = false;
-  $("#export-video span").textContent = "保存并导出视频";
-  $("#export-note").textContent = "导出将使用你最新保存的分镜";
+function persistDraft() {
+  if (!state.current || !state.draft) return;
+  try {
+    if (state.dirty) localStorage.setItem(`frame-draft:${state.current.id}`,JSON.stringify({baseVersion:state.current.version,edit:state.draft,updatedAt:Date.now()}));
+    else localStorage.removeItem(`frame-draft:${state.current.id}`);
+  } catch { $("#save-status").textContent = "草稿空间不足，请保存分镜"; }
 }
-
-function readEdit() {
-  const scenes = $$(".scene-card").map(card => ({
-    heading:card.querySelector('[data-field="heading"]').value.trim(),
-    caption:card.querySelector('[data-field="caption"]').value.trim(),
-    duration:Number(card.querySelector('[data-field="duration"]').value),
-    asset_id: card.dataset.assetId || null,
-  }));
-  const title = $("#project-title").value.trim();
-  if (!title) throw new Error("请填写作品名称。");
-  if (scenes.some(s => !s.heading || !s.caption)) throw new Error("每个分镜都需要标题和字幕。");
-  if (scenes.some(s => !Number.isInteger(s.duration) || s.duration < 2 || s.duration > 20)) throw new Error("每个分镜的时长需要是 2–20 秒的整数。");
-  if (scenes.reduce((n,s)=>n+s.duration,0) > 60) throw new Error("总时长不能超过 60 秒。");
-  return {title, style:$("#board-style").value, aspect:$("#board-aspect").value, scenes, version:state.current.version};
+function findDraft() {
+  state.pendingDraft = null; $("#draft-banner").hidden = true;
+  try {
+    const cached = JSON.parse(localStorage.getItem(`frame-draft:${state.current.id}`) || "null");
+    if (cached?.edit?.scenes?.length && JSON.stringify(cached.edit)!==JSON.stringify(state.draft)) {
+      state.pendingDraft = cached; $("#draft-banner").hidden = false;
+      $("#draft-message").textContent = cached.baseVersion === state.current.version ? "发现未保存的本机草稿。" : "发现旧版本草稿；恢复后请核对最新内容再保存。";
+    }
+  } catch { /* A damaged local draft does not prevent opening the saved project. */ }
+}
+function historyButtons() { $("#undo-edit").disabled = state.history.length<2; $("#redo-edit").disabled = !state.future.length; }
+function resetHistory() { state.history=[E.clone(state.draft)]; state.future=[]; state.lastEditAt=0; historyButtons(); }
+function rememberEdit(force=false) {
+  const previous=state.history[state.history.length-1];
+  if (JSON.stringify(previous)===JSON.stringify(state.draft)) return;
+  const active=document.activeElement, key=`${active?.id || active?.dataset.field || ""}:${active?.closest(".scene-card")?.dataset.index || ""}`;
+  if (!force && state.history.length>1 && key===state.lastEditKey && Date.now()-state.lastEditAt<700) state.history[state.history.length-1]=E.clone(state.draft);
+  else state.history.push(E.clone(state.draft));
+  if(state.history.length>40)state.history.shift();
+  state.future=[];state.lastEditAt=Date.now();state.lastEditKey=key;historyButtons();
+}
+function markDirty({record=true,force=false}={}) {
+  if (!state.current) return;
+  state.draft=collectEdit();
+  state.dirty=JSON.stringify(state.draft)!==JSON.stringify(E.editable(state.current));
+  if(record)rememberEdit(force);
+  state.previewController?.abort();state.previewRevision++;
+  stopPreview();clearTimeout(state.poll);state.job=null;
+  if (!state.config?.narration_available) $("#narration").checked=false;
+  $("#save-status").textContent=state.dirty ? "已暂存草稿 · 待保存":"已保存至本地";
+  $("#draft-banner").hidden=true;persistDraft();
+  $("#download-actions").hidden=true;$("#export-video").hidden=false;$("#export-video").disabled=false;
+  $("#export-video span").textContent=state.dirty ? "保存并导出视频":"导出视频";
+  $("#export-note").textContent="导出将使用最新保存的分镜";
+  updateBoardTotal();
+  clearTimeout(state.previewTimer);
+  state.previewTimer=setTimeout(()=>showScene(Math.min(state.scene,state.draft.scenes.length-1)),450);
+}
+function applyDraft(edit, record=true) {
+  state.draft=E.clone(edit);
+  $("#project-title").value=edit.title;$("#board-style").value=edit.style;$("#board-aspect").value=edit.aspect;
+  $("#custom-color").checked=Boolean(edit.accent_color);$("#accent-color").value=edit.accent_color || "#c2d69b";
+  state.scene=Math.min(state.scene,edit.scenes.length-1);renderScenes();markDirty({record,force:true});historyButtons();
+}
+async function refreshDraftPreview(index) {
+  const revision=++state.previewRevision, id=state.current.id;
+  state.previewController?.abort();
+  if (!state.dirty) { $("#scene-preview").src=previewUrl(state.current,index); return; }
+  let body;
+  try { body={...readEdit(),index}; }
+  catch(error) { $("#preview-hint").textContent=error.message;return; }
+  state.previewController=new AbortController();
+  $("#preview-hint").textContent="正在更新草稿画面…";
+  try {
+    const response=await fetch(`/api/projects/${id}/preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:state.previewController.signal});
+    if(!response.ok)throw new Error((await response.json()).detail || "画面更新失败");
+    const blob=await response.blob();
+    if(revision!==state.previewRevision || state.current?.id!==id)return;
+    if(state.previewObject)URL.revokeObjectURL(state.previewObject);
+    state.previewObject=URL.createObjectURL(blob);$("#scene-preview").src=state.previewObject;
+    $("#preview-hint").textContent="草稿画面 · 保存后即可导出";
+  } catch(error) { if(error.name!=="AbortError" && revision===state.previewRevision)$("#preview-hint").textContent=error.message; }
 }
 
 async function saveBoard() {
@@ -212,7 +298,8 @@ async function saveBoard() {
     $$("#storyboard-panel input, #storyboard-panel textarea, #storyboard-panel select, #save-board").forEach(el => el.disabled = true);
     const project = await api(`/api/projects/${id}`, {method:"PUT",body:JSON.stringify(body)});
     if (state.current?.id !== id) return false;
-    state.current = project; state.dirty = false; state.job = null; clearTimeout(state.poll);
+    state.current = project; state.draft=E.editable(project); state.dirty = false; state.job = null; clearTimeout(state.poll);
+    persistDraft(); resetHistory();
     $("#save-status").textContent = "已保存至本地";
     renderScenes(); updateBoardTotal(); showScene(Math.min(state.scene,project.scenes.length-1)); resetExport();
     showError("#save-error"); await refreshProjects();
@@ -225,25 +312,23 @@ async function saveBoard() {
 }
 
 function updateTime() {
-  const elapsed = state.current ? state.current.scenes.slice(0,state.scene).reduce((n,s)=>n+s.duration,0) : 0;
+  const elapsed = state.draft ? state.draft.scenes.slice(0,state.scene).reduce((n,s)=>n+s.duration,0) : 0;
   $("#preview-time").innerHTML = `${seconds(elapsed)} <small>/ ${seconds(total())}</small>`;
 }
 
 function showScene(index) {
-  const p = state.current; if (!p) return;
-  state.scene = index;
-  $(".preview-transport").hidden = false; $("#timeline").hidden = false;
-  $("#final-video").pause(); $("#final-video").hidden = true;
-  $("#sample-poster").hidden = true; $("#scene-preview").hidden = false;
-  $("#scene-preview").src = previewUrl(p,index);
-  $("#scene-preview").alt = `分镜 ${index+1}：${p.scenes[index].heading}`;
-  $("#preview-badge").textContent = `分镜 ${index+1} / ${p.scenes.length}`;
-  $("#preview-spec").textContent = p.aspect;
-  $("#preview-hint").textContent = state.dirty ? "当前显示已保存版本，保存分镜后更新" : "分镜静帧预览 · 导出时加入镜头运动和淡入淡出";
-  $("#play-preview").disabled = false; $("#next-preview").disabled = false;
-  $("#timeline").innerHTML = p.scenes.map((s,i)=>`<button data-preview="${i}" class="${i===index ? "active":""}" style="flex:${s.duration}" aria-label="跳转到分镜 ${i+1}" title="${esc(s.heading)} · ${s.duration}秒"></button>`).join("");
+  const p=state.draft;if(!p)return;
+  index=Math.max(0,Math.min(index,p.scenes.length-1));state.scene=index;
+  $(".preview-transport").hidden=false;$("#timeline").hidden=false;
+  $("#final-video").pause();$("#final-video").hidden=true;$("#sample-poster").hidden=true;$("#scene-preview").hidden=false;
+  $("#scene-preview").alt=`分镜 ${index+1}：${p.scenes[index].heading}`;
+  $("#preview-badge").textContent=`${state.dirty ? "草稿 · ":""}分镜 ${index+1} / ${p.scenes.length}`;
+  $("#preview-spec").textContent=p.aspect;
+  $("#preview-hint").textContent="分镜静帧预览 · 导出时加入设定的镜头运动";
+  $("#play-preview").disabled=false;$("#next-preview").disabled=false;
+  $("#timeline").innerHTML=p.scenes.map((item,i)=>`<button data-preview="${i}" class="${i===index ? "active":""}" style="flex:${Number(item.duration)||1}" aria-label="跳转到分镜 ${i+1}" title="${esc(item.heading)} · ${item.duration}秒"></button>`).join("");
   $$(".scene-card").forEach((card,i)=>card.classList.toggle("active",i===index));
-  updateStage(p.aspect); updateTime();
+  updateStage(p.aspect);updateTime();refreshDraftPreview(index);
 }
 
 function stopPreview() {
@@ -255,20 +340,20 @@ function stopPreview() {
 
 function nextDuringPlayback() {
   if (!state.playing || !state.current) return;
-  if (state.scene === state.current.scenes.length-1) { stopPreview(); return; }
+  if (state.scene === state.draft.scenes.length-1) { stopPreview(); return; }
   showScene(state.scene+1);
-  state.playTimer = setTimeout(nextDuringPlayback,state.current.scenes[state.scene].duration*1000);
+  state.playTimer = setTimeout(nextDuringPlayback,state.draft.scenes[state.scene].duration*1000);
 }
 
 function togglePreview() {
   if (!state.current) return;
   if (state.playing) { stopPreview(); return; }
-  if (state.scene === state.current.scenes.length-1 || !$("#final-video").hidden) showScene(0);
+  if (state.scene === state.draft.scenes.length-1 || !$("#final-video").hidden) showScene(0);
   state.playing = true;
   $("#preview-stage").classList.add("playing");
   $("#play-preview").textContent = "Ⅱ";
   $("#play-preview").setAttribute("aria-label", "暂停分镜预览");
-  state.playTimer = setTimeout(nextDuringPlayback,state.current.scenes[state.scene].duration*1000);
+  state.playTimer = setTimeout(nextDuringPlayback,state.draft.scenes[state.scene].duration*1000);
 }
 
 function resetExport() {
@@ -278,11 +363,11 @@ function resetExport() {
   $("#export-note").textContent = state.current ? "在本机合成，通常需要几十秒" : "生成分镜，距离成片再近一步";
 }
 
-function handleJob(job) {
+function handleJob(job, historical=false) {
   if (state.current?.id !== job.project_id) return;
   state.job = job;
   const current = job.version === state.current.version && !state.dirty && job.music === $("#music").checked && Boolean(job.narration) === $("#narration").checked;
-  if (!current) { resetExport(); return; }
+  if (!current && !historical) { resetExport(); return; }
   if (["queued","rendering"].includes(job.status)) {
     $("#job-progress").hidden = false; $("#download-actions").hidden = true;
     $("#job-message").textContent = job.message;
@@ -296,18 +381,19 @@ function handleJob(job) {
     $("#job-progress").hidden = true; $("#export-video").hidden = true; $("#download-actions").hidden = false;
     $("#download-mp4").href = `/api/jobs/${job.id}/video.mp4?download=true`;
     $("#download-srt").href = `/api/jobs/${job.id}/subtitles.srt`;
-    $("#download-json").href = job.materials ? `/api/jobs/${job.id}/materials/storyboard.json` : `/api/projects/${job.project_id}/storyboard.json`;
+    $("#download-json").href = job.materials ? `/api/jobs/${job.id}/materials/storyboard.json` : `/api/jobs/${job.id}/storyboard.json`;
+    $("#download-bundle").hidden=!job.materials;$("#download-bundle").href=`/api/jobs/${job.id}/materials.zip`;
     for (const name of ["cover", "post"]) {
       $(`#download-${name}`).hidden = !job.materials;
       $(`#download-${name}`).href = `/api/jobs/${job.id}/materials/${name === "cover" ? "cover.png" : "post.txt"}`;
     }
-    $("#export-note").textContent = `已完成 · ${Number(job.duration.toFixed(1))} 秒 · ${(job.bytes/1024/1024).toFixed(1)} MB${job.narration ? " · 中文配音" : ""}${job.music ? " · 氛围音轨" : job.narration ? "" : " · 无声"}`;
+    $("#export-note").textContent = `${historical && !current ? "历史成片 · ":""}已完成 · ${Number(Number(job.duration || 0).toFixed(1))} 秒 · ${(Number(job.bytes || 0)/1024/1024).toFixed(1)} MB${job.narration ? " · 中文配音" : ""}${job.music ? " · 氛围音轨" : job.narration ? "" : " · 无声"}`;
     $("#scene-preview").hidden = true; $("#sample-poster").hidden = true; $("#final-video").hidden = false;
     $(".preview-transport").hidden = true; $("#timeline").hidden = true;
     const videoUrl = `/api/jobs/${job.id}/video.mp4`;
     $("#final-video").poster = job.materials ? `/api/jobs/${job.id}/materials/cover.png` : previewUrl(state.current,0);
     if ($("#final-video").getAttribute("src") !== videoUrl) { $("#final-video").src = videoUrl; $("#final-video").load(); }
-    $("#preview-badge").textContent = "成片就绪";
+    $("#preview-badge").textContent = historical && !current ? `历史版本 ${job.version}` : "成片就绪";
     $("#preview-hint").textContent = "使用播放器查看实际成片，支持全屏播放";
     showError("#export-error");
   } else {
@@ -321,7 +407,7 @@ async function pollJob(id) {
     const job = await api(`/api/jobs/${id}`);
     if (state.job?.id !== id) return;
     showError("#export-error"); handleJob(job);
-    if (job.status === "completed") toast("成片已就绪，可以播放和下载了。");
+    if (job.status === "completed") { toast("成片已就绪，可以播放和下载了。"); refreshHistory(); }
   } catch (error) {
     if (state.job?.id !== id) return;
     showError("#export-error",`${error.message} 正在重试连接。`);
@@ -363,11 +449,12 @@ $("#generation-mode").addEventListener("change",()=> { $("#generation-note").tex
 $("#scenes").addEventListener("input",event=> {
   const card=event.target.closest(".scene-card"); if(!card)return;
   const field=event.target.dataset.field; if(!field)return;
-  if(field==="duration")state.current.scenes[Number(card.dataset.index)].duration=Number(event.target.value);
+  const output=card.querySelector(`[data-output="${field}"]`);
+  if(output)output.textContent=field==="zoom" ? `${Number(event.target.value).toFixed(1)}×` : `${Math.round(Number(event.target.value)*100)}%`;
   if(field==="caption")card.querySelector(".scene-counter").textContent=`${event.target.value.length} / 96`;
   markDirty(); updateBoardTotal();
 });
-[$("#project-title"),$("#board-style"),$("#board-aspect")].forEach(el=>el.addEventListener("input",markDirty));
+[$("#project-title"),$("#board-style"),$("#board-aspect"),$("#custom-color"),$("#accent-color")].forEach(el=>el.addEventListener("input",markDirty));
 document.addEventListener("click",event=> {
   const project=event.target.closest("[data-project]"); if(project)openProject(project.dataset.project);
   const preview=event.target.closest("[data-preview]"); if(preview){stopPreview();showScene(Number(preview.dataset.preview));}
@@ -398,7 +485,7 @@ for (const control of [$("#music"), $("#narration")]) control.addEventListener("
 });
 $("#return-board-preview").addEventListener("click",()=>{showScene(0);setStep(2);});
 $("#play-preview").addEventListener("click",togglePreview);
-$("#next-preview").addEventListener("click",()=>{if(state.current){stopPreview();showScene((state.scene+1)%state.current.scenes.length);}});
+$("#next-preview").addEventListener("click",()=>{if(state.current){stopPreview();showScene((state.scene+1)%state.draft.scenes.length);}});
 $("#new-project").addEventListener("click",newProject);$("#library-new").addEventListener("click",newProject);$("#back-brief").addEventListener("click",newProject);
 $("#nav-studio").addEventListener("click",()=>setPage("studio"));
 $("#nav-library").addEventListener("click",async()=>{setPage("library");try{await refreshProjects();}catch(error){toast(error.message,true);}});
@@ -409,7 +496,7 @@ $("#step-export").addEventListener("click",()=>{if(state.current){setStep(3);$("
 for(const id of ["help-open","help-top"])$(`#${id}`).addEventListener("click",()=>$("#help-dialog").showModal());
 for(const id of ["help-close","help-start"])$(`#${id}`).addEventListener("click",()=>$("#help-dialog").close());
 $("#help-dialog").addEventListener("click",event=>{if(event.target===$("#help-dialog")){const r=event.target.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)event.target.close();}});
-window.addEventListener("beforeunload",event=>{if(state.dirty){event.preventDefault();event.returnValue="";}});
+window.addEventListener("beforeunload",()=>{if(state.dirty)persistDraft();});
 document.addEventListener("visibilitychange",()=>{if(document.hidden)stopPreview();});
 $("#scene-preview").addEventListener("error",()=>{$("#preview-hint").textContent="预览暂时无法加载，请重新打开作品或检查服务。";});
 $("#final-video").addEventListener("error",()=>{
@@ -445,27 +532,114 @@ $("#merchant-example").addEventListener("click", () => {
   for (const [key, value] of Object.entries(example)) $(`#merchant-${key.replaceAll("_", "-")}`).value = value;
   state.merchantExample = true; $("#merchant-example-note").hidden = false; setStyle("editorial");
 });
-$("#scenes").addEventListener("change", async event => {
-  const input = event.target.closest("[data-upload]"); if (!input || !input.files[0]) return;
-  const file = input.files[0], card = input.closest(".scene-card"), id = state.current.id;
-  if (file.size > 8*1024*1024) { toast("照片不能超过 8 MB。", true); input.value = ""; return; }
-  state.uploading++; input.disabled = true; card.querySelector(".remove-photo").disabled = true;
-  card.querySelector(".photo-status").textContent = "正在上传…";
+async function uploadFiles(files, target=null) {
+  if (!state.current || state.uploading || state.saving) return;
+  const id=state.current.id;state.uploading++;let assigned=0,uploaded=0;
+  $("#editing-note").textContent="正在上传照片，请稍候…";
   try {
-    const photo = await api(`/api/projects/${id}/assets`, {method:"POST", body:file, headers:{"Content-Type":file.type || "application/octet-stream"}});
-    card.dataset.assetId = photo.asset_id;
-    card.querySelector(".photo-status").textContent = "照片已上传 · 保存后更新预览";
-    card.querySelector(".remove-photo").hidden = false;
-    markDirty();
-  } catch (error) {
-    card.querySelector(".photo-status").textContent = card.dataset.assetId ? "保留原照片" : "尚未上传 · 使用图形背景";
-    showError("#save-error", error.message);
-  } finally { state.uploading--; input.disabled = false; input.value = ""; card.querySelector(".remove-photo").disabled = false; }
+    for (const file of files) {
+      if(file.size>8*1024*1024)throw new Error(`${file.name} 超过 8 MB，请缩小后上传。`);
+      const photo=await api(`/api/projects/${id}/assets`,{method:"POST",body:file,headers:{"Content-Type":file.type || "application/octet-stream","X-File-Name":encodeURIComponent(file.name)}});
+      uploaded++;state.draft=collectEdit();
+      let index=target;
+      if(index===null)index=state.draft.scenes.findIndex(item=>!item.asset_id);
+      if(index===-1 && state.draft.scenes.length<8 && total()<=58) {
+        state.draft=E.transform(state.draft,"add",state.draft.scenes.length-1);index=state.draft.scenes.length-1;
+      }
+      if(index!==null && index>=0 && index<state.draft.scenes.length) {
+        state.draft.scenes[index].asset_id=photo.asset_id;state.draft.scenes[index].crop_x=.5;state.draft.scenes[index].crop_y=.5;state.draft.scenes[index].zoom=1;assigned++;
+      }
+      renderScenes();markDirty({force:true});
+      $("#editing-note").textContent=`已上传 ${uploaded} / ${files.length} 张照片`;
+    }
+    toast(`已上传 ${uploaded} 张照片，已分配 ${assigned} 个分镜。`);
+  } catch(error) { showError("#save-error",`${error.message} 已完成的 ${uploaded} 张照片已保留。`); }
+  finally {
+    state.uploading--;$("#batch-photos").value="";
+    $("#editing-note").textContent="1–8 个分镜 · 总时长不超过 60 秒 · 修改自动暂存为本机草稿";
+    try { state.assets=await api(`/api/projects/${id}/assets`); } catch(error){toast(error.message,true);}
+  }
+}
+$("#scenes").addEventListener("change", event=>{
+  const input=event.target.closest("[data-upload]");if(input?.files[0])uploadFiles([...input.files],Number(input.dataset.upload));
 });
-$("#scenes").addEventListener("click", event => {
-  const button = event.target.closest(".remove-photo"); if (!button || state.saving || state.uploading) return;
-  const card = button.closest(".scene-card"); card.dataset.assetId = ""; button.hidden = true;
-  card.querySelector(".photo-status").textContent = "使用图形背景 · 保存后更新"; markDirty();
+$("#batch-photos").addEventListener("change",event=>uploadFiles([...event.target.files]));
+$("#scenes").addEventListener("click",async event=>{
+  if(state.saving || state.uploading)return;
+  const card=event.target.closest(".scene-card");if(!card)return;
+  const index=Number(card.dataset.index);
+  const action=event.target.closest("[data-scene-action]");
+  if(action) {
+    try {
+      const name=action.dataset.sceneAction;state.draft=collectEdit();
+      const next=E.transform(state.draft,name,index);
+      state.scene=name==="up" ? Math.max(0,index-1) : name==="down" || name==="duplicate" ? Math.min(index+1,next.scenes.length-1) : Math.min(index,next.scenes.length-1);
+      applyDraft(next);
+    } catch(error){toast(error.message,true);}
+  }
+  if(event.target.closest(".remove-photo")) {state.draft=collectEdit();state.draft.scenes[index].asset_id=null;applyDraft(state.draft);}
+  if(event.target.closest("[data-media]")) {
+    state.mediaTarget=index;$("#media-grid").innerHTML="<p>正在读取照片…</p>";$("#media-dialog").showModal();
+    const id=state.current.id;
+    try {
+      const assets=await api(`/api/projects/${id}/assets`);if(state.current?.id!==id)return;state.assets=assets;
+      $("#media-grid").innerHTML=assets.length ? assets.map(asset=>`<button class="media-item" data-asset="${asset.asset_id}"><img src="${assetUrl(asset.asset_id)}" alt="${esc(asset.name)}" loading="lazy"><span>${esc(asset.name)}</span><small>${asset.width} × ${asset.height}</small></button>`).join("") : "<p>还没有照片。先上传照片，再在其他分镜重复使用。</p>";
+    }catch(error){$("#media-grid").textContent=error.message;}
+  }
 });
+$("#media-close").addEventListener("click",()=>$("#media-dialog").close());
+$("#media-grid").addEventListener("click",event=>{
+  const button=event.target.closest("[data-asset]");if(!button)return;
+  state.draft=collectEdit();const scene=state.draft.scenes[state.mediaTarget];if(!scene)return;
+  scene.asset_id=button.dataset.asset;scene.crop_x=.5;scene.crop_y=.5;scene.zoom=1;
+  state.scene=state.mediaTarget;applyDraft(state.draft);$("#media-dialog").close();
+});
+$("#add-scene").addEventListener("click",()=>{
+  if(state.uploading || state.saving)return;
+  try {const next=E.transform(collectEdit(),"add",state.draft.scenes.length-1);state.scene=next.scenes.length-1;applyDraft(next);}
+  catch(error){toast(error.message,true);}
+});
+function undoDraft(){if(state.history.length<2 || state.uploading || state.saving)return;state.future.push(state.history.pop());applyDraft(state.history[state.history.length-1],false);}
+function redoDraft(){if(!state.future.length || state.uploading || state.saving)return;const edit=state.future.pop();state.history.push(E.clone(edit));applyDraft(edit,false);}
+$("#undo-edit").addEventListener("click",undoDraft);$("#redo-edit").addEventListener("click",redoDraft);
+$("#restore-draft").addEventListener("click",()=>{if(state.pendingDraft){applyDraft(state.pendingDraft.edit);state.pendingDraft=null;toast("草稿已恢复，请检查后保存。");}});
+$("#discard-draft").addEventListener("click",()=>{state.pendingDraft=null;$("#draft-banner").hidden=true;persistDraft();});
+document.addEventListener("keydown",event=>{
+  if(!(event.metaKey || event.ctrlKey) || !state.current || $("#storyboard-panel").hidden)return;
+  if(event.key.toLowerCase()==="s"){event.preventDefault();saveBoard().then(ok=>{if(ok)toast("分镜已保存。");});}
+  const typing=event.target.matches("input,textarea,select");
+  if(!typing && event.key.toLowerCase()==="z"){event.preventDefault();event.shiftKey ? redoDraft():undoDraft();}
+});
+$("#library-filter").addEventListener("change",renderLibrary);
+$("#library-grid").addEventListener("click",async event=>{
+  const button=event.target.closest("[data-project-action]");if(!button || !canLeave())return;
+  const id=button.dataset.id,action=button.dataset.projectAction;button.disabled=true;
+  try {
+    if(state.current?.id===id && !(await saveBoard()))return;
+    const project=state.projects.find(p=>p.id===id);
+    if(action==="duplicate"){
+      const copy=await api(`/api/projects/${id}/duplicate`,{method:"POST",body:JSON.stringify({version:project.version})});
+      await refreshProjects();await openProject(copy.id);toast("作品已复制，照片和文案可独立修改。");
+    } else {
+      await api(`/api/projects/${id}/archive`,{method:"POST",body:JSON.stringify({version:project.version,archived:action==="archive"})});
+      if(state.current?.id===id){state.dirty=false;newProject();setPage("library");}
+      await refreshProjects();toast(action==="archive" ? "作品已归档，可在已归档列表恢复。":"作品已恢复。");
+    }
+  }catch(error){toast(error.message,true);await refreshProjects();}
+  finally{button.disabled=false;}
+});
+function renderHistory(jobs) {
+  $("#history-count").textContent=jobs.length;$("#history-panel").hidden=!jobs.length;
+  $("#history-list").innerHTML=jobs.slice(0,12).map(job=>`<div class="history-item"><div><b>版本 ${job.version} · ${Number(job.duration.toFixed(1))} 秒</b><small>${new Date(job.created_at).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} · ${job.narration ? "中文配音":"无配音"}${job.music ? " · 音乐":""}</small></div>${job.status==="completed" ? `<button data-history-job="${job.id}">查看</button>` : `<span>${esc(({failed:"失败",queued:"等待中",rendering:"合成中",cancelled:"已取消"})[job.status] || job.status)}</span>`}</div>`).join("");
+}
+async function refreshHistory(){
+  if(!state.current)return;const id=state.current.id;
+  try{const jobs=await api(`/api/projects/${id}/jobs`);if(state.current?.id===id)renderHistory(jobs);}catch(error){toast(error.message,true);}
+}
+$("#history-list").addEventListener("click",async event=>{
+  const button=event.target.closest("[data-history-job]");if(!button)return;
+  try{handleJob(await api(`/api/jobs/${button.dataset.historyJob}`),true);}catch(error){toast(error.message,true);}
+});
+
 setBriefKind("merchant");
 init();

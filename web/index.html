@@ -8,6 +8,7 @@
   <title>FRAME 拾帧 · 创作工作台</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
+  <script src="/editor.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -35,7 +36,7 @@
     <div class="sidebar-bottom">
       <div class="local-note"><span class="status-dot"></span><div>灵感，安心留在本地<small>作品自动保存在这台设备</small></div></div>
       <button class="help-button" id="help-open"><svg><use href="#i-info"/></svg>演示指南 <span>↗</span></button>
-      <div class="profile"><span>Q</span><div>我的创作空间<small>PERSONAL WORKSPACE</small></div><span class="version">V0.2</span></div>
+      <div class="profile"><span>Q</span><div>我的创作空间<small>PERSONAL WORKSPACE</small></div><span class="version">V0.3</span></div>
     </div>
   </aside>
 
@@ -86,10 +87,14 @@
             <div class="section-title"><h2><svg><use href="#i-film"/></svg>让故事，有自己的节奏</h2><span id="save-status">已保存</span></div>
             <div class="board-heading"><label class="field-label" for="project-title">作品名称</label><input id="project-title" maxlength="32" required><div class="board-meta"><span id="board-source"></span><span id="board-total"></span></div></div>
             <div class="board-settings"><label>风格<select id="board-style"><option value="cinema">日落电影感</option><option value="editorial">自然编辑风</option><option value="tech">未来科技感</option></select></label><label>画幅<select id="board-aspect"><option>9:16</option><option>16:9</option><option>1:1</option></select></label></div>
+            <div class="brand-controls"><label><input type="checkbox" id="custom-color"> 使用品牌强调色</label><input type="color" id="accent-color" value="#c2d69b" aria-label="品牌强调色"></div>
+            <div id="draft-banner" class="draft-banner" hidden><span id="draft-message"></span><button id="restore-draft" class="text-button">恢复草稿</button><button id="discard-draft" class="text-button">丢弃草稿</button></div>
+            <div class="editor-toolbar"><button id="add-scene" class="secondary">＋ 新增分镜</button><button id="undo-edit" class="secondary" disabled>↶ 撤销</button><button id="redo-edit" class="secondary" disabled>↷ 重做</button><label class="secondary batch-upload">批量上传照片<input type="file" id="batch-photos" accept="image/jpeg,image/png,image/webp" multiple aria-label="批量上传门店照片"></label></div>
+            <p class="generation-note" id="editing-note">1–8 个分镜 · 总时长不超过 60 秒 · 修改自动暂存为本机草稿</p>
             <div id="scenes" class="scenes"></div>
             <div id="save-error" class="error-box" role="alert" hidden></div>
             <div class="board-footer"><button class="secondary" id="back-brief">新创意</button><button class="primary" id="save-board"><svg><use href="#i-check"/></svg>保存分镜</button></div>
-            <p class="generation-note">每一幕都可以上传真实照片。照片会居中裁切；保存后检查预览。配音朗读字幕，镜头会按朗读长度自动延长。</p>
+            <p class="generation-note">展开「画面构图」可调整照片裁切、文字位置与镜头运动。未保存的画面也能预览；保存后可导出。配音会自动延长过短的镜头。</p>
           </section>
           <div class="bottom-note"><span>✳</span><div>先把故事讲好，再让画面发光。<small>门店照片 · 中文配音 · 封面与发布文案</small></div><span>MADE WITH FRAME</span></div>
         </div>
@@ -101,14 +106,15 @@
             <div id="timeline" class="mini-timeline"><span></span><span></span><span></span></div>
             <p id="preview-hint" class="preview-hint">生成分镜后，在这里预览你的故事</p>
           </section>
-          <section class="panel export-panel"><div class="section-title"><h2>成片设置</h2><span>EXPORT</span></div><div class="export-spec"><span>视频格式</span><strong>MP4 <small>H.264</small></strong></div><div class="export-spec"><span>画面质量</span><strong>720p <small>24 fps</small></strong></div><label class="export-spec music-label"><span>氛围音轨 <small>轻音乐</small></span><input type="checkbox" id="music" checked role="switch"><span class="switch" aria-hidden="true"></span></label><label class="export-spec music-label"><span>中文配音 <small>朗读字幕</small></span><input type="checkbox" id="narration" role="switch" disabled><span class="switch" aria-hidden="true"></span></label><p id="narration-note" class="generation-note">正在检查本机语音…</p><div id="job-progress" hidden><div class="job-line"><span id="job-message">准备导出</span><b id="job-percent">0%</b></div><progress id="progress" max="100" value="0"></progress></div><div id="export-error" class="error-box" role="alert" hidden></div><button id="export-video" class="primary wide" disabled><svg><use href="#i-download"/></svg><span>导出视频</span></button><div id="download-actions" hidden><a id="download-mp4" class="primary wide" download><svg><use href="#i-download"/></svg>下载 MP4</a><div class="download-secondary"><a id="download-srt" download>下载字幕</a><a id="download-json" download>导出分镜</a><a id="download-cover" download>下载封面</a><a id="download-post" download>发布文案</a><button id="return-board-preview">查看分镜</button></div></div><p class="generation-note" id="export-note">生成分镜，距离成片再近一步</p></section>
+          <section class="panel export-panel"><div class="section-title"><h2>成片设置</h2><span>EXPORT</span></div><div class="export-spec"><span>视频格式</span><strong>MP4 <small>H.264</small></strong></div><div class="export-spec"><span>画面质量</span><strong>720p <small>24 fps</small></strong></div><label class="export-spec music-label"><span>氛围音轨 <small>轻音乐</small></span><input type="checkbox" id="music" checked role="switch"><span class="switch" aria-hidden="true"></span></label><label class="export-spec music-label"><span>中文配音 <small>朗读字幕</small></span><input type="checkbox" id="narration" role="switch" disabled><span class="switch" aria-hidden="true"></span></label><p id="narration-note" class="generation-note">正在检查本机语音…</p><div id="job-progress" hidden><div class="job-line"><span id="job-message">准备导出</span><b id="job-percent">0%</b></div><progress id="progress" max="100" value="0"></progress></div><div id="export-error" class="error-box" role="alert" hidden></div><button id="export-video" class="primary wide" disabled><svg><use href="#i-download"/></svg><span>导出视频</span></button><div id="download-actions" hidden><a id="download-mp4" class="primary wide" download><svg><use href="#i-download"/></svg>下载 MP4</a><div class="download-secondary"><a id="download-srt" download>下载字幕</a><a id="download-json" download>导出分镜</a><a id="download-cover" download>下载封面</a><a id="download-post" download>发布文案</a><a id="download-bundle" download>整套素材 ZIP</a><button id="return-board-preview">查看分镜</button></div></div><details id="history-panel" class="export-history" hidden><summary>历史导出 <span id="history-count"></span></summary><div id="history-list"></div></details><p class="generation-note" id="export-note">生成分镜，距离成片再近一步</p></section>
         </aside>
       </div>
     </div>
-    <div id="library-view" class="page" hidden><section class="page-heading"><div><div class="eyebrow">YOUR IDEAS, IN MOTION</div><h1>每一次灵感，都有迹可循<span>。</span></h1><p>继续打磨一个故事，或开始下一段创作。</p></div><button class="primary" id="library-new"><svg><use href="#i-plus"/></svg>新建作品</button></section><div class="library-bar"><h2>全部作品 <span id="library-count"></span></h2><label><span class="sr-only">搜索作品</span><input type="search" id="project-search" placeholder="搜索作品名称或创意…"></label></div><div id="library-grid" class="library-grid"></div></div>
+    <div id="library-view" class="page" hidden><section class="page-heading"><div><div class="eyebrow">YOUR IDEAS, IN MOTION</div><h1>每一次灵感，都有迹可循<span>。</span></h1><p>继续打磨一个故事，或开始下一段创作。</p></div><button class="primary" id="library-new"><svg><use href="#i-plus"/></svg>新建作品</button></section><div class="library-bar"><h2>全部作品 <span id="library-count"></span></h2><label><span class="sr-only">搜索作品</span><input type="search" id="project-search" placeholder="搜索作品名称或创意…"></label></div><div class="library-filters"><label for="library-filter">显示作品</label><select id="library-filter"><option value="active">正在创作</option><option value="archived">已归档</option><option value="all">全部作品</option></select><span>归档保留照片与历史成片，可随时恢复。</span></div><div id="library-grid" class="library-grid"></div></div>
     <footer class="page-footer"><span>FRAME 拾帧</span><span>小小的想法，也能有自己的银幕。</span><span>LOCAL STUDIO / 2026</span></footer>
   </main>
   <dialog id="help-dialog"><div class="dialog-heading"><span class="eyebrow">A QUICK START</span><button id="help-close" class="icon-button" aria-label="关闭说明">✕</button></div><h2>三步，完成你的第一支短片。</h2><ol><li><b>填写门店信息</b><p>填入店名、产品、特色和地址。可先用虚构咖啡店示例体验，也可切换自由创意。</p></li><li><b>打磨分镜</b><p>为每幕上传产品、环境或门头照片，修改字幕，保存后检查裁切与文字。支持 JPG、PNG、WebP，单张不超过 8 MB、2000 万像素。</p></li><li><b>导出成片</b><p>选择中文配音与音乐，导出视频、字幕、封面和发布文案。配音会延长过短镜头；成片以实际导出时长为准。</p></li></ol><div class="help-scope"><b>当前版本的能力</b><p>门店模式只根据填写信息套用文案模板，照片由你上传，不生成实拍画面。当前中文配音使用 macOS 已安装的婷婷语音，无需 API 密钥；其他系统仍可导出字幕与音乐。</p><p>服务端配置 DEEPSEEK_API_KEY 后，可选择 AI 编写分镜；仅此模式会将创意发送给 DeepSeek。</p><p>作品保存在本机 data 文件夹。此版本适合个人本地演示。</p></div><button class="primary wide" id="help-start">开始创作<svg><use href="#i-arrow"/></svg></button></dialog>
+  <dialog id="media-dialog"><div class="dialog-heading"><h2>这份作品的照片</h2><button id="media-close" class="icon-button" aria-label="关闭照片库">✕</button></div><p class="generation-note">选择照片用于当前分镜。照片可重复使用，不会改变其他镜头。</p><div id="media-grid" class="media-grid"></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

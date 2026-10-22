@@ -1,8 +1,12 @@
 import io
+import copy
 import json
 import logging
 import os
 import threading
+import shutil
+import zipfile
+from urllib.parse import unquote
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -13,9 +17,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.concurrency import run_in_threadpool
 
-from .models import Brief, MerchantBrief, ProjectEdit, RenderRequest
-from .assets import MAX_UPLOAD, save_photo
+from .models import Brief, MerchantBrief, PreviewRequest, ProjectEdit, ProjectState, RenderRequest, VersionRequest
+from .assets import MAX_UPLOAD, list_photos, photo_path, save_photo
 from .merchant import merchant_storyboard
 from .narration import NarrationError, available as narration_available
 from .renderer import ROOT, font, render, scene_image
@@ -34,7 +39,7 @@ def create_app(data_dir=None):
     @asynccontextmanager
     async def lifespan(app):
         store.recover_jobs()
-        if not store.projects():
+        if not store.projects(include_archived=True):
             brief = Brief(**{k: v for k, v in EXAMPLES[0].items() if k != "label"})
             project = {**brief.model_dump(), **offline_storyboard(brief), "id": str(uuid4()),
                        "version": 1, "created_at": now(), "updated_at": now(), "example": True}
@@ -117,8 +122,8 @@ def create_app(data_dir=None):
             return JSONResponse({"status": "error", "detail": "字体或 FFmpeg 不可用，请重新安装依赖。"}, status_code=503)
 
     @app.get("/api/projects")
-    def projects():
-        return store.projects()
+    def projects(include_archived: bool = False):
+        return store.projects(include_archived=include_archived)
 
     @app.post("/api/projects", status_code=201)
     def create_project(brief: Brief):
@@ -134,6 +139,28 @@ def create_app(data_dir=None):
     @app.get("/api/projects/{pid}")
     def project(pid: str):
         return get_project(pid)
+
+    @app.post("/api/projects/{pid}/duplicate", status_code=201)
+    def duplicate_project(pid: str, request: VersionRequest):
+        original = get_project(pid)
+        if original["version"] != request.version:
+            raise HTTPException(409, "作品已更新，请重新打开后复制。")
+        project = copy.deepcopy(original)
+        project.update(id=str(uuid4()), title=original["title"][:27]+" · 副本", version=1,
+                       archived=False, created_at=now(), updated_at=now())
+        source = store.directory / "assets" / original["id"]
+        if source.is_dir():
+            shutil.copytree(source, store.directory / "assets" / project["id"])
+        store.save_project(project)
+        return project
+
+    @app.post("/api/projects/{pid}/archive")
+    def archive_project(pid: str, request: ProjectState):
+        project = get_project(pid)
+        project.update(archived=request.archived, updated_at=now(), version=request.version+1)
+        if not store.save_project(project, expected_version=request.version):
+            raise HTTPException(409, "作品已更新，请刷新后再试。")
+        return project
 
     @app.post("/api/merchant-projects", status_code=201)
     def create_merchant(brief: MerchantBrief):
@@ -151,11 +178,27 @@ def create_app(data_dir=None):
             content.extend(chunk)
             if len(content) > MAX_UPLOAD:
                 raise HTTPException(413, "照片不能超过 8 MB")
-        try:
+        def save():
             with upload_lock:
-                return save_photo(content, store.directory / "assets" / project["id"])
+                return save_photo(content, store.directory / "assets" / project["id"],
+                                  unquote(request.headers.get("x-file-name", "门店照片")))
+        try:
+            return await run_in_threadpool(save)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
+
+    @app.get("/api/projects/{pid}/assets")
+    def photos(pid: str):
+        project = get_project(pid)
+        return list_photos(store.directory / "assets" / project["id"])
+
+    @app.get("/api/projects/{pid}/assets/{aid}.jpg")
+    def photo(pid: str, aid: str):
+        project = get_project(pid)
+        path = photo_path(store.directory / "assets" / project["id"], aid)
+        if path is None:
+            raise HTTPException(404, "找不到这张照片")
+        return FileResponse(path, media_type="image/jpeg")
 
     @app.put("/api/projects/{pid}")
     def edit_project(pid: str, edit: ProjectEdit):
@@ -177,6 +220,20 @@ def create_app(data_dir=None):
             raise HTTPException(404, "找不到这个分镜")
         buffer = io.BytesIO()
         scene_image(project, index, asset_dir=store.directory / "assets" / project["id"]).save(buffer, format="PNG")
+        return Response(buffer.getvalue(), media_type="image/png")
+
+    @app.post("/api/projects/{pid}/preview")
+    def draft_preview(pid: str, edit: PreviewRequest):
+        project = get_project(pid)
+        if edit.index >= len(edit.scenes):
+            raise HTTPException(404, "找不到这个分镜")
+        directory = store.directory / "assets" / project["id"]
+        for scene in edit.scenes:
+            if scene.asset_id and photo_path(directory, scene.asset_id) is None:
+                raise HTTPException(400, "照片不存在或不属于当前作品")
+        project.update(edit.model_dump(exclude={"version", "index"}))
+        buffer = io.BytesIO()
+        scene_image(project, edit.index, asset_dir=directory).save(buffer, format="PNG")
         return Response(buffer.getvalue(), media_type="image/png")
 
     @app.get("/api/projects/{pid}/storyboard.json")
@@ -267,6 +324,36 @@ def create_app(data_dir=None):
         if not path.is_file():
             raise HTTPException(404, "旧版任务没有这份素材，请修改并重新导出")
         return FileResponse(path, filename=name)
+
+    @app.get("/api/jobs/{jid}/storyboard.json")
+    def job_storyboard(jid: str):
+        job = get_job(jid)
+        path = store.directory / "exports" / job["id"] / "storyboard.json"
+        if job["status"] == "completed" and path.is_file():
+            return FileResponse(path, filename="storyboard.json")
+        return Response(json.dumps(job["snapshot"], ensure_ascii=False, indent=2), media_type="application/json",
+                        headers={"Content-Disposition": 'attachment; filename="storyboard.json"'})
+
+    @app.get("/api/jobs/{jid}/materials.zip")
+    def bundle_download(jid: str):
+        job = get_job(jid)
+        if job["status"] != "completed":
+            raise HTTPException(409, "成片尚未完成，请稍后下载")
+        directory = store.directory / "exports" / job["id"]
+        names = ["video.mp4", "subtitles.srt", "cover.png", "post.txt", "storyboard.json"]
+        if not all((directory / name).is_file() for name in names):
+            raise HTTPException(404, "素材不完整，请保存分镜并重新导出")
+        path = directory / "materials.zip"
+        if not path.is_file():
+            temp = directory / f"materials-{uuid4().hex}.part"
+            try:
+                with zipfile.ZipFile(temp, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+                    for name in names:
+                        bundle.write(directory / name, name)
+                temp.replace(path)
+            finally:
+                temp.unlink(missing_ok=True)
+        return FileResponse(path, media_type="application/zip", filename="frame-materials.zip")
 
     app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="web")
     return app
