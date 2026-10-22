@@ -47,14 +47,27 @@ def photo_path(directory, asset_id):
     return path if path.is_file() else None
 
 
+def photo_dimensions(path):
+    """Decode the image, not just its header, before declaring it usable."""
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(path) as photo:
+                if photo.width * photo.height > MAX_PIXELS or getattr(photo, "is_animated", False):
+                    raise ValueError("照片尺寸或格式不受支持")
+                photo.load()
+                return photo.size
+    except (OSError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise ValueError("照片无法完整读取") from exc
+
+
 def list_photos(directory):
     photos = []
     for path in sorted(directory.glob("*.jpg"), key=lambda p: p.stat().st_mtime, reverse=True):
         if not photo_path(directory, path.stem):
             continue
         try:
-            with Image.open(path) as photo:
-                width, height = photo.size
+            width, height = photo_dimensions(path)
             label="门店照片"
             try:
                 info=json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))

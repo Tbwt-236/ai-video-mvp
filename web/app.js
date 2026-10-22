@@ -18,19 +18,13 @@ function toast(message, error = false) {
 }
 
 async function api(url, options = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 80000);
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal,
-      headers: options.body ? {"Content-Type": "application/json", ...options.headers} : {} });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.detail || "操作失败，请稍后重试。");
-    return body;
-  } catch (error) {
-    if (error.name === "AbortError") throw new Error("请求超时，请稍后重试。");
-    if (error instanceof TypeError) throw new Error("无法连接本地服务，请确认启动窗口仍在运行。");
-    throw error;
-  } finally { clearTimeout(timeout); }
+  try { return await window.FrameHTTP.requestJSON(url,options); }
+  catch(error){if(error.code==="NETWORK")connectionStatus(false);throw error;}
+}
+function connectionStatus(online) {
+  $("#connection").classList.toggle("offline",!online);
+  $("#connection").innerHTML='<span class="status-dot"></span>'+(online ? "本地工作室":"服务连接异常");
+  $("#retry-connection").hidden=online;
 }
 
 function showError(selector, message = "") {
@@ -134,6 +128,7 @@ function setAspect(aspect) {
     button.classList.toggle("selected", selected); button.setAttribute("aria-pressed", selected);
   });
   if (!state.current) { $("#preview-spec").textContent = aspect; updateStage(aspect); updateTime(); }
+  updateExportDimensions();
 }
 
 function updateStage(aspect) {
@@ -311,13 +306,13 @@ async function refreshDraftPreview(index) {
   $("#preview-hint").textContent="正在更新草稿画面…";
   try {
     const response=await fetch(`/api/projects/${id}/preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:state.previewController.signal});
-    if(!response.ok)throw new Error((await response.json()).detail || "画面更新失败");
+    if(!response.ok)throw await window.FrameHTTP.responseError(response,"画面更新失败，请重试。");
     const blob=await response.blob();
     if(revision!==state.previewRevision || state.current?.id!==id)return;
     if(state.previewObject)URL.revokeObjectURL(state.previewObject);
     state.previewObject=URL.createObjectURL(blob);$("#scene-preview").src=state.previewObject;
     $("#preview-hint").textContent="草稿画面 · 保存后即可导出";
-  } catch(error) { if(error.name!=="AbortError" && revision===state.previewRevision)$("#preview-hint").textContent=error.message; }
+  } catch(error) { if(error.name!=="AbortError" && revision===state.previewRevision)$("#preview-hint").textContent=window.FrameHTTP.friendlyError(error).message; }
 }
 
 async function saveBoard() {
@@ -406,6 +401,7 @@ function restoreExportSettings(job) {
   $("#speech-rate").value=rate;$("#music-volume").value=Math.round((job.music_volume ?? .5)*100);updateAudioControls();
 }
 function updateAudioControls() {
+  updateExportDimensions();
   $("#music-volume-row").hidden=!$("#music").checked;
   $("#music-settings").hidden=!$("#music").checked;
   $("#music-audio").volume=Number($("#music-volume").value)/100;
@@ -414,6 +410,12 @@ function updateAudioControls() {
   $("#narration").disabled=!state.config?.narration_available && !$("#narration").checked;
   $("#voice-preview").disabled=!state.current || !state.config?.narration_available || Boolean(state.voiceController);
   $("#check-export").disabled=!state.current;
+}
+function updateExportDimensions() {
+  const aspect=state.draft?.aspect || state.aspect;
+  const size=({"9:16":[720,1280],"16:9":[1280,720],"1:1":[720,720]})[aspect] || [720,1280];
+  const scale=$("#quality").value==="1080p" ? 1.5:1;
+  $("#export-dimensions").textContent=`${size[0]*scale} × ${size[1]*scale} · ${aspect}`;
 }
 function stopVoice() {
   stopMusic();
@@ -441,7 +443,7 @@ function clearPreflight() {
   $("#preflight-result").innerHTML="<p>保存作品后，可检查照片、文字时长和导出环境。</p>";
 }
 function showPreflight(result) {
-  $("#preflight-result").innerHTML=`<b>${result.ready ? "可以导出":"请先处理以下问题"}</b><p>${result.scenes} 幕 · ${result.photos} 张照片 · ${result.width} × ${result.height}</p>${result.blocking.length ? `<ul class="check-blocking">${result.blocking.map(item=>`<li>${esc(item)}</li>`).join("")}</ul>`:""}${result.warnings.length ? `<ul>${result.warnings.map(item=>`<li>${esc(item)}</li>`).join("")}</ul>`:"<p>照片和分镜时长检查通过。</p>"}`;
+  $("#preflight-result").innerHTML=`<b>${result.ready ? "可以导出":"请先处理以下问题"}</b><p>${result.scenes} 幕 · ${result.photos} 张素材（${result.photo_scenes ?? result.photos} 幕有照片） · ${result.width} × ${result.height}</p>${result.blocking.length ? `<ul class="check-blocking">${result.blocking.map(item=>`<li>${esc(item)}</li>`).join("")}</ul>`:""}${result.warnings.length ? `<ul>${result.warnings.map(item=>`<li>${esc(item)}</li>`).join("")}</ul>`:"<p>照片和分镜时长检查通过。</p>"}`;
   if(!result.ready)$("#preflight-panel").open=true;
 }
 function resetExport() {
@@ -449,6 +451,7 @@ function resetExport() {
   $("#export-video").hidden = false; $("#export-video").disabled = !state.current;
   $("#export-video span").textContent = "导出视频";
   $("#export-note").textContent = state.current ? "在本机合成，通常需要几十秒" : "生成分镜，距离成片再近一步";
+  if(state.current && !$("#final-video").hidden)showScene(state.scene);
 }
 
 function handleJob(job, historical=false) {
@@ -477,7 +480,8 @@ function handleJob(job, historical=false) {
       $(`#download-${name}`).hidden = !job.materials;
       $(`#download-${name}`).href = `/api/jobs/${job.id}/materials/${name === "cover" ? "cover.png" : "post.txt"}`;
     }
-    $("#export-note").textContent = `${historical && !current ? "历史成片 · ":""}已完成 · ${Number(Number(job.duration || 0).toFixed(1))} 秒 · ${(Number(job.bytes || 0)/1024/1024).toFixed(1)} MB${job.narration ? " · 中文配音" : ""}${job.music ? " · 氛围音轨" : job.narration ? "" : " · 无声"}`;
+    $("#export-note").textContent = `${historical && !current ? "历史成片 · ":""}已完成 · ${job.width && job.height ? job.width+" × "+job.height+" · ":""}${Number(Number(job.duration || 0).toFixed(1))} 秒 · ${(Number(job.bytes || 0)/1024/1024).toFixed(1)} MB${job.narration ? " · 中文配音" : ""}${job.music ? " · 氛围音轨" : job.narration ? "" : " · 无声"}`;
+    updateStage(job.aspect || state.current.aspect);
     $("#scene-preview").hidden = true; $("#sample-poster").hidden = true; $("#final-video").hidden = false;
     $(".preview-transport").hidden = true; $("#timeline").hidden = true;
     const videoUrl = `/api/jobs/${job.id}/video.mp4`;
@@ -664,11 +668,11 @@ $("#voice-preview").addEventListener("click",async()=>{
   const timeout=setTimeout(()=>controller.abort(),80000);
   try{
     const response=await fetch("/api/narration/preview",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,speech_rate:Number($("#speech-rate").value)}),signal:controller.signal});
-    if(!response.ok)throw new Error((await response.json()).detail || "试听失败，请重试。");
+    if(!response.ok)throw await window.FrameHTTP.responseError(response,"试听失败，请重试。");
     const blob=await response.blob();if(revision!==state.voiceRevision)return;
     state.voiceObject=URL.createObjectURL(blob);$("#voice-audio").src=state.voiceObject;$("#voice-audio").hidden=false;
     try{await $("#voice-audio").play();}catch{toast("试听已准备好，请点击播放器播放。");}
-  }catch(error){if(revision===state.voiceRevision)toast(error.name==="AbortError" ? "试听超时，请稍后重试。":error.message,true);}
+  }catch(error){if(revision===state.voiceRevision)toast(error.name==="AbortError" ? "试听超时，请稍后重试。":window.FrameHTTP.friendlyError(error).message,true);}
   finally{clearTimeout(timeout);if(revision===state.voiceRevision){state.voiceController=null;$("#voice-preview").textContent="重新试听当前分镜";updateAudioControls();}}
 });
 $("#play-preview").addEventListener("click",togglePreview);
@@ -692,6 +696,8 @@ $("#final-video").addEventListener("error",()=>{
 });
 
 async function init(){
+  if(state.initializing)return;
+  state.initializing=true;
   try{
     const [config,,health]=await Promise.all([api("/api/config"),refreshProjects(),api("/api/health")]);
     state.config=config;
@@ -706,9 +712,20 @@ async function init(){
     $("#examples").innerHTML=config.examples.map((ex,i)=>`<button type="button" class="example-chip" data-example="${i}">${esc(ex.label)} ↗</button>`).join("");
     const ai=$("#generation-mode option[value=ai]");ai.disabled=!config.ai_available;ai.textContent=config.ai_available?"DeepSeek AI · 已连接":"DeepSeek AI · 尚未配置";
     if(health.status!=="ok")throw new Error("视频合成环境未就绪，请查看启动日志。");
+    state.initialized=true;connectionStatus(true);showError("#form-error");
     await restoreRoute();
-  }catch(error){$("#connection").classList.add("offline");$("#connection").innerHTML='<span class="status-dot"></span>服务连接异常';showError("#form-error",error.message);}
+  }catch(error){connectionStatus(false);showError("#form-error",error.message);}
+  finally{state.initializing=false;}
 }
+$("#retry-connection").addEventListener("click",async()=>{
+  $("#retry-connection").disabled=true;
+  try{
+    if(!state.initialized){await init();return;}
+    await api("/api/health");await refreshProjects();connectionStatus(true);
+    toast("已重新连接，当前草稿仍然保留。");
+  }catch(error){connectionStatus(false);toast(error.message,true);}
+  finally{$("#retry-connection").disabled=false;}
+});
 function setBriefKind(kind) {
   state.briefKind = kind;
   $("#merchant-fields").hidden = kind !== "merchant";
@@ -979,11 +996,11 @@ $("#backup-project").addEventListener("click",async()=>{
     const id=state.current.id;
     toast("正在打包分镜和照片…");
     const response=await fetch(`/api/projects/${id}/package.zip`);
-    if(!response.ok)throw new Error((await response.json()).detail || "作品备份失败。");
+    if(!response.ok)throw await window.FrameHTTP.responseError(response,"作品备份失败。");
     const url=URL.createObjectURL(await response.blob()),link=document.createElement("a");
     link.href=url;link.download="frame-project.zip";document.body.append(link);link.click();link.remove();
     setTimeout(()=>URL.revokeObjectURL(url),60000);toast("作品包已准备好，包含分镜和照片，可通过作品库导入。");
-  }catch(error){toast(error.message,true);}
+  }catch(error){toast(window.FrameHTTP.friendlyError(error).message,true);}
   finally{state.backingUp=false;$("#backup-project").disabled=false;}
 });
 $("#import-project").addEventListener("change",async event=>{

@@ -17,8 +17,8 @@
 
 > Use case: photorealistic-natural. Asset type: demo photo for a fictional Chinese independent coffee shop marketing video; it will be labeled as AI demo imagery in the app and repository. Create one vertical 9:16 editorial photograph: a ceramic cup of osmanthus latte with subtle latte art on a warm wooden table beside a cafe window, small golden osmanthus blossoms, a softly blurred empty independent cafe behind it. Natural late afternoon light, warm cream and muted olive tones, realistic materials, calm inviting mood. Place the cup and its saucer prominently in the upper half, keep the lower third a quiet wooden tabletop suitable for adding captions in software. No people, no brand, no signage, no text or watermark. Single photo, not a collage.
 
-## 下一步试用方式
+## 后续版本
 
-目前无需店主关系或更多功能开发即可开展验证：把样片当作效果说明，先在熟悉的咖啡店消费后询问是否愿意看十几秒样片，不发送未经允许的批量消息。
+此目录保留 V0.2 历史样片。V0.3 已增加多行业模板、分镜与构图编辑、独立口播、多画幅副本、1080p、作品备份和三组一键示例，无需店主反馈即可按 [验收说明](../../docs/ACCEPTANCE.md) 完整体验。
 
-首轮目标是拿到 3 次具体反馈和 1 次用真实店铺照片制作的试用：对方能否看懂、是否愿意用自己的素材、最想修改什么、最终愿不愿意发布。得到真实采用意愿后再投入更多行业模板、云端配音或付费系统；这些目标目前尚未验证。
+最新成片与可编辑作品包见 [V0.3 演示目录](../v0.3/README.md)。样例均为虚构素材，未声称验证真实商业转化。

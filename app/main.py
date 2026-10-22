@@ -22,7 +22,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.background import BackgroundTask
 
 from .models import Brief, MerchantBrief, PreviewRequest, ProjectEdit, ProjectState, RenderRequest, VersionRequest, VoicePreview, ShowcaseRequest, VariantsRequest
-from .assets import MAX_UPLOAD, list_photos, photo_path, save_photo
+from .assets import MAX_UPLOAD, list_photos, photo_dimensions, photo_path, save_photo
 from .merchant import catalog as merchant_catalog, merchant_storyboard
 from .narration import NarrationError, available as narration_available, synthesize
 from .renderer import ROOT, font, render, scene_image, run_ffmpeg
@@ -351,9 +351,19 @@ def create_app(data_dir=None):
         project = get_project(pid)
         if not 0 <= index < len(project["scenes"]):
             raise HTTPException(404, "找不到这个分镜")
-        buffer = io.BytesIO()
-        scene_image(project, index, asset_dir=store.directory / "assets" / project["id"]).save(buffer, format="PNG")
-        return Response(buffer.getvalue(), media_type="image/png")
+        return scene_preview(project,index)
+
+    def scene_preview(project,index):
+        directory=store.directory / "assets" / project["id"]
+        asset_id=project["scenes"][index].get("asset_id")
+        if asset_id:
+            try:
+                photo_dimensions(directory / f"{asset_id}.jpg")
+            except (OSError,ValueError) as exc:
+                raise HTTPException(400,"这幕的照片无法读取，请重新上传或移除照片。") from exc
+        buffer=io.BytesIO()
+        scene_image(project,index,asset_dir=directory).save(buffer,format="PNG")
+        return Response(buffer.getvalue(),media_type="image/png")
 
     @app.post("/api/projects/{pid}/preview")
     def draft_preview(pid: str, edit: PreviewRequest):
@@ -368,9 +378,7 @@ def create_app(data_dir=None):
         if "merchant" not in edit.model_fields_set:
             changes.pop("merchant", None)
         project.update(changes)
-        buffer = io.BytesIO()
-        scene_image(project, edit.index, asset_dir=directory).save(buffer, format="PNG")
-        return Response(buffer.getvalue(), media_type="image/png")
+        return scene_preview(project,edit.index)
 
     @app.get("/api/projects/{pid}/storyboard.json")
     def storyboard_download(pid: str):
