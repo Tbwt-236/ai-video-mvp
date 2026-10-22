@@ -23,7 +23,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.concurrency import run_in_threadpool
 from starlette.background import BackgroundTask
 
-from .models import Brief, MerchantBrief, PreviewRequest, ProjectEdit, ProjectState, RenderRequest, VersionRequest, VoicePreview, ShowcaseRequest, VariantsRequest
+from .models import Brief, MerchantBrief, PreviewRequest, ProjectEdit, ProjectState, RenderRequest, VersionRequest, VoicePreview, ShowcaseRequest, VariantsRequest, BatchRenderRequest
 from .assets import MAX_UPLOAD, list_photos, photo_dimensions, photo_path, save_photo
 from .merchant import catalog as merchant_catalog, merchant_storyboard
 from .narration import NarrationError, available as narration_available, synthesize
@@ -461,44 +461,58 @@ def create_app(data_dir=None):
             raise HTTPException(409, "作品已更新，请保存或重新打开后检查。")
         return export_check(project, store.directory, request, narration_available())
 
+    def plan_export(pid, request, jobs):
+        project = get_project(pid)
+        if request.version != project["version"]:
+            raise HTTPException(409, "作品已更新，请保存或重新打开检查后再导出。")
+        if request.narration and not narration_available():
+            raise HTTPException(400, "此设备未提供本机中文配音，请关闭配音后导出。macOS 可在系统设置中安装婷婷语音。")
+        checks = export_check(project, store.directory, request, narration_available())
+        if not checks["ready"]:
+            raise HTTPException(400, f"{project['title']}：" + " ".join(checks["blocking"]))
+        for job in jobs:
+            if (job["project_id"] == pid and job["version"] == request.version and job["music"] == request.music
+                    and job.get("narration", False) == request.narration
+                    and job.get("quality", "720p") == request.quality
+                    and job.get("speech_rate", 210) == request.speech_rate
+                    and job.get("music_volume", .5) == request.music_volume
+                    and job.get("music_style","ambient") == request.music_style
+                    and job["status"] in ("queued", "rendering", "completed")):
+                if missing_files(store.directory / "exports", job):
+                    continue
+                return job, False
+        return {"id": str(uuid4()), "project_id": pid, "version": project["version"],
+                "status": "queued", "progress": 0, "message": "等待渲染", "created_at": now(),
+                "music": request.music, "narration": request.narration, "materials": True, "snapshot": project, "title": project["title"],
+                "quality":request.quality,"speech_rate":request.speech_rate,"music_volume":request.music_volume,
+                "music_style":request.music_style,"duration": project["duration"], "aspect": project["aspect"]}, True
+
+    def queue_exports(targets):
+        with render_lock:
+            jobs = store.jobs()
+            # Validate the entire group first: bad input or a full queue starts none.
+            plans = [plan_export(pid,request,jobs) for pid,request in targets]
+            fresh = [job for job,is_new in plans if is_new]
+            active = sum(j["status"] in ("queued", "rendering", "cancelling") for j in jobs)
+            if active + len(fresh) > 3:
+                raise HTTPException(429, "导出队列空间不足，本次未新增任务。请等待当前任务完成后再试。")
+            if fresh:
+                store.insert_jobs(fresh)
+                for job in fresh:
+                    event = threading.Event()
+                    future = executor.submit(work, job.copy(), event)
+                    controls[job["id"]] = (event, future)
+            return [public_job(job) for job,_ in plans]
+
     @app.post("/api/projects/{pid}/render")
     def export_video(pid: str, request: RenderRequest):
-        with render_lock:
-            project = get_project(pid)
-            if request.version != project["version"]:
-                raise HTTPException(409, "项目已更新，请保存并刷新分镜后重试。")
-            if request.narration and not narration_available():
-                raise HTTPException(400, "此设备未提供本机中文配音，请关闭配音后导出。macOS 可在系统设置中安装婷婷语音。")
-            checks = export_check(project, store.directory, request, narration_available())
-            if not checks["ready"]:
-                raise HTTPException(400, " ".join(checks["blocking"]))
-            jobs = store.jobs()
-            for job in jobs:
-                if (job["project_id"] == pid and job["version"] == request.version and job["music"] == request.music
-                        and job.get("narration", False) == request.narration
-                        and job.get("quality", "720p") == request.quality
-                        and job.get("speech_rate", 210) == request.speech_rate
-                        and job.get("music_volume", .5) == request.music_volume
-                        and job.get("music_style","ambient") == request.music_style
-                        and job["status"] in ("queued", "rendering", "completed")):
-                    if missing_files(store.directory / "exports", job):
-                        # Keep remaining files and the historical snapshot available.
-                        # A fresh job rebuilds the complete set without editing the project.
-                        continue
-                    return public_job(job)
-            if sum(j["status"] in ("queued", "rendering", "cancelling") for j in jobs) >= 3:
-                raise HTTPException(429, "导出队列已满，请等待当前任务完成。")
-            job = {"id": str(uuid4()), "project_id": pid, "version": project["version"],
-                   "status": "queued", "progress": 0, "message": "等待渲染", "created_at": now(),
-                   "music": request.music, "narration": request.narration, "materials": True, "snapshot": project, "title": project["title"],
-                   "quality":request.quality,"speech_rate":request.speech_rate,"music_volume":request.music_volume,
-                   "music_style":request.music_style,
-                   "duration": project["duration"], "aspect": project["aspect"]}
-            store.save_job(job)
-            event = threading.Event()
-            future = executor.submit(work, job.copy(), event)
-            controls[job["id"]] = (event, future)
-            return public_job(job)
+        return queue_exports([(pid,request)])[0]
+
+    @app.post("/api/render-batch")
+    def export_batch(request: BatchRenderRequest):
+        targets = [(item.project_id,RenderRequest(version=item.version,**request.settings.model_dump()))
+                   for item in request.projects]
+        return {"jobs":queue_exports(targets)}
 
     @app.post("/api/jobs/{jid}/cancel")
     def cancel_job(jid: str):

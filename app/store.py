@@ -47,6 +47,12 @@ class Store:
         with self.connect() as con:
             con.execute("INSERT OR REPLACE INTO jobs VALUES (?, ?, ?)", (job["id"], job["project_id"], json.dumps(job)))
 
+    def insert_jobs(self, jobs):
+        """Reserve a whole batch before any worker is allowed to start."""
+        with self.connect() as con:
+            con.executemany("INSERT INTO jobs VALUES (?, ?, ?)",
+                            [(job["id"],job["project_id"],json.dumps(job)) for job in jobs])
+
     def insert_projects(self, projects):
         """Create a group atomically; never replace an existing project."""
         with self.connect() as con:

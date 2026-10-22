@@ -27,4 +27,4 @@
 
 原图和完整生成提示词见 [咖啡素材](../merchant/README.md) 及 [花店、烘焙素材](../showcase/README.md)。均使用内置 image_gen 工具，未使用 CLI/API fallback。
 
-界面实测截图：[桌面工作台](studio.png)、[手机成片预览](mobile.png)、[手机拍摄清单](shooting-plan.png)、[发布助手](publish-assistant.png)。[拍摄清单 TXT](shooting-plan.txt) 是从工作台实际下载的五幕宠物门店虚构示例，可用于了解素材准备方式。
+界面实测截图：[桌面工作台](studio.png)、[手机成片预览](mobile.png)、[手机拍摄清单](shooting-plan.png)、[发布助手](publish-assistant.png)、[多画幅批量导出](batch-export.png)。[拍摄清单 TXT](shooting-plan.txt) 是从工作台实际下载的五幕宠物门店虚构示例，可用于了解素材准备方式。

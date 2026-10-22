@@ -674,11 +674,12 @@ $("#save-top").addEventListener("click",async()=> { if(await saveBoard())toast("
 $("#create-variants").addEventListener("click",()=>{
   if(!state.current || !canLeave())return;
   $("#variants-form").hidden=false;$("#variants-results").hidden=true;showError("#variants-error");
+  $("#variants-batch").hidden=true;state.variantProjects=[];
   $$('[name="variant-aspect"]').forEach(el=>el.checked=el.value!==$("#board-aspect").value);
   $("#variants-dialog").showModal();
 });
-$("#variants-close").addEventListener("click",()=>{if(!state.saving)$("#variants-dialog").close();});
-$("#variants-dialog").addEventListener("cancel",event=>{if(state.saving)event.preventDefault();});
+$("#variants-close").addEventListener("click",()=>{if(!state.saving && !state.batchExporting)$("#variants-dialog").close();});
+$("#variants-dialog").addEventListener("cancel",event=>{if(state.saving || state.batchExporting)event.preventDefault();});
 $("#variants-form").addEventListener("submit",async event=>{
   event.preventDefault();if(state.saving || !state.current)return;
   const aspects=$$('[name="variant-aspect"]:checked').map(el=>el.value);
@@ -687,15 +688,41 @@ $("#variants-form").addEventListener("submit",async event=>{
     const body={...readEdit(),aspects};state.saving=true;
     $("#variants-submit").disabled=true;$("#variants-submit").textContent="正在创建独立作品…";showError("#variants-error");
     const projects=await api(`/api/projects/${state.current.id}/variants`,{method:"POST",body:JSON.stringify(body)});
+    state.variantProjects=projects;state.variantSettings=exportSettings();
     $("#variants-form").hidden=true;$("#variants-results").hidden=false;
     $("#variants-results").innerHTML='<p>已创建 '+projects.length+' 个独立作品。打开后检查构图，原草稿仍保留。</p>'+projects.map(project=>`<button class="variant-result" data-open-variant="${project.id}"><img src="${previewUrl(project,project.cover_scene||0,480)}" alt="${esc(project.aspect)} 画幅预览"><span><b>${esc(project.title)}</b><small>打开作品，检查构图与字幕 →</small></span></button>`).join("");
+    $("#variants-batch").hidden=false;$("#variants-export").hidden=false;$("#variants-queue").hidden=true;
+    $("#variants-export").textContent=`批量导出这 ${projects.length} 个画幅`;
+    const settings=state.variantSettings;
+    $("#variants-export-note").textContent=`沿用当前设置：${settings.quality} · ${settings.narration ? "中文配音":"无配音"} · ${settings.music ? "有音乐":"无音乐"}。确认上方构图后可一起导出，任务会逐个完成。`;
+    showError("#variants-batch-error");
     await refreshProjects();
   } catch(error){showError("#variants-error",error.message);}
   finally {state.saving=false;$("#variants-submit").disabled=false;$("#variants-submit").textContent="创建选定画幅";}
 });
 $("#variants-results").addEventListener("click",event=>{
-  const button=event.target.closest("[data-open-variant]");if(!button || state.saving)return;
+  const button=event.target.closest("[data-open-variant]");if(!button || state.saving || state.batchExporting)return;
   $("#variants-dialog").close();openProject(button.dataset.openVariant);
+});
+$("#variants-export").addEventListener("click",async()=>{
+  if(state.batchExporting || !state.variantProjects?.length)return;
+  state.batchExporting=true;$("#variants-export").disabled=true;$("#variants-close").disabled=true;
+  $("#variants-export").textContent="正在检查并提交…";showError("#variants-batch-error");
+  try {
+    const body={projects:state.variantProjects.map(project=>({project_id:project.id,version:project.version})),settings:state.variantSettings};
+    const result=await api("/api/render-batch",{method:"POST",body:JSON.stringify(body)});
+    $("#variants-export").hidden=true;$("#variants-queue").hidden=false;
+    const ready=result.jobs.filter(job=>job.status==="completed").length;
+    $("#variants-export-note").textContent=ready===result.jobs.length ? `${ready} 个画幅已就绪，可从导出任务下载。` : `已提交 ${result.jobs.length} 个画幅${ready ? "，其中 "+ready+" 个已有成片":""}。可继续创作，在导出任务里查看进度和下载。`;
+    refreshQueue();
+  } catch(error){showError("#variants-batch-error",error.message);}
+  finally {
+    state.batchExporting=false;$("#variants-export").disabled=false;$("#variants-close").disabled=false;
+    $("#variants-export").textContent=`批量导出这 ${state.variantProjects?.length || 0} 个画幅`;
+  }
+});
+$("#variants-queue").addEventListener("click",()=>{
+  $("#variants-dialog").close();$("#queue-dialog").showModal();refreshQueue();
 });
 $("#fork-draft").addEventListener("click",async()=>{
   if(!state.current || state.saving || state.uploading)return;

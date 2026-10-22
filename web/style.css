@@ -2765,7 +2765,9 @@ dialog li p {
 .showcase-card small { display:block;margin:0 10px;color:#a2af94;font-size:10px;line-height:1.5; }
 .showcase-section>p { font-size:10px;color:#89977e;line-height:1.8;margin:12px 0 0; }
 .demo-disclosure { color:#b8bc9d;background:#282d20;border:1px solid #414832;border-radius:7px;padding:11px 13px;font-size:11px;line-height:1.8; }
-#variants-dialog { width:min(580px,92vw); }
+#variants-dialog { width:min(580px,92vw);max-height:88vh;overflow:auto; }
+#variants-export-note { text-align:left;line-height:1.8; }
+#variants-queue { margin-top:10px; }
 .variant-options { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:22px 0; }
 .variant-options label { position:relative;border:1px solid #3d4833;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:12px;padding:24px 6px 16px;cursor:pointer;background:#20281b; }
 .variant-options label:has(input:checked) { border-color:#c2d69b;background:#303b24; }

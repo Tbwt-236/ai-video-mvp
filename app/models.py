@@ -122,8 +122,7 @@ class PreviewRequest(ProjectEdit):
     index: int = Field(ge=0, le=7)
 
 
-class RenderRequest(BaseModel):
-    version: int = Field(ge=1)
+class RenderOptions(BaseModel):
     music: bool = True
     narration: bool = False
     quality: Literal["720p", "1080p"] = "720p"
@@ -139,6 +138,27 @@ class RenderRequest(BaseModel):
             self.music_volume = .5
             self.music_style = "ambient"
         return self
+
+
+class RenderRequest(RenderOptions):
+    version: int = Field(ge=1)
+
+
+class RenderTarget(BaseModel):
+    project_id: str = Field(pattern=r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")
+    version: int = Field(ge=1)
+
+
+class BatchRenderRequest(BaseModel):
+    projects: list[RenderTarget] = Field(min_length=1, max_length=3)
+    settings: RenderOptions = Field(default_factory=RenderOptions)
+
+    @field_validator("projects")
+    @classmethod
+    def unique_projects(cls, projects):
+        if len({item.project_id for item in projects}) != len(projects):
+            raise ValueError("每份作品只能提交一次")
+        return projects
 
 
 class VoicePreview(BaseModel):
