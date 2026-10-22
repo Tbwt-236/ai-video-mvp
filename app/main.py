@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -21,7 +21,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.concurrency import run_in_threadpool
 from starlette.background import BackgroundTask
 
-from .models import Brief, MerchantBrief, PreviewRequest, ProjectEdit, ProjectState, RenderRequest, VersionRequest, VoicePreview, ShowcaseRequest
+from .models import Brief, MerchantBrief, PreviewRequest, ProjectEdit, ProjectState, RenderRequest, VersionRequest, VoicePreview, ShowcaseRequest, VariantsRequest
 from .assets import MAX_UPLOAD, list_photos, photo_path, save_photo
 from .merchant import catalog as merchant_catalog, merchant_storyboard
 from .narration import NarrationError, available as narration_available, synthesize
@@ -30,6 +30,7 @@ from .process import RenderCancelled
 from .checks import export_check
 from .portability import MAX_PACKAGE, export_package, import_package
 from .showcases import available_showcases, build_showcase, showcase_photo
+from .projects import copy_projects
 from .store import Store, now
 from .storyboard import EXAMPLES, generate_storyboard, offline_storyboard
 
@@ -239,31 +240,31 @@ def create_app(data_dir=None):
         return save_copy(original)
 
     def save_copy(original, changes=None):
-        project = copy.deepcopy(original)
-        if changes:
-            project.update(changes)
-        project.update(id=str(uuid4()), title=project["title"][:27]+" · 副本", version=1,
-                       duration=sum(scene["duration"] for scene in project["scenes"]),
-                       archived=False, created_at=now(), updated_at=now())
-        source = store.directory / "assets" / original["id"]
         with upload_lock:
-            if source.is_dir():
-                shutil.copytree(source, store.directory / "assets" / project["id"])
-        store.save_project(project)
-        return project
+            return copy_projects(store,original,changes)[0]
+
+    def draft_changes(original,edit):
+        for scene in edit.scenes:
+            if scene.asset_id and photo_path(store.directory/"assets"/original["id"],scene.asset_id) is None:
+                raise HTTPException(400, "草稿中的照片不可读取，请重新上传后再另存。")
+        changes=edit.model_dump(exclude={"version","aspects"})
+        if "merchant" not in edit.model_fields_set:
+            changes.pop("merchant",None)
+        return changes
 
     @app.post("/api/projects/{pid}/fork", status_code=201)
     def fork_draft(pid: str, edit: ProjectEdit):
         original=get_project(pid)
-        for scene in edit.scenes:
-            if scene.asset_id and photo_path(store.directory/"assets"/original["id"],scene.asset_id) is None:
-                raise HTTPException(400, "草稿中的照片不可读取，请重新上传后再另存。")
-        changes=edit.model_dump(exclude={"version"})
-        if "merchant" not in edit.model_fields_set:
-            changes.pop("merchant",None)
         # An older base version is deliberately allowed: this saves a separate draft
         # without replacing the newer project another window has already saved.
-        return save_copy(original,changes)
+        return save_copy(original,draft_changes(original,edit))
+
+    @app.post("/api/projects/{pid}/variants", status_code=201)
+    def create_variants(pid: str, edit: VariantsRequest):
+        original=get_project(pid)
+        changes=draft_changes(original,edit)
+        with upload_lock:
+            return copy_projects(store,original,changes,edit.aspects)
 
     @app.post("/api/projects/{pid}/archive")
     def archive_project(pid: str, request: ProjectState):
@@ -460,6 +461,16 @@ def create_app(data_dir=None):
         get_project(pid)
         return [public_job(j) for j in store.jobs(pid)]
 
+    @app.get("/api/jobs")
+    def all_jobs(limit: int = Query(default=20,ge=1,le=100)):
+        jobs=store.jobs()
+        active=[job for job in jobs if job["status"] in {"queued","rendering","cancelling"}]
+        waiting=sorted((job for job in active if job["status"]=="queued"),key=lambda job:job["created_at"])
+        positions={job["id"]:i+1 for i,job in enumerate(waiting)}
+        recent=[job for job in jobs if job["status"] not in {"queued","rendering","cancelling"}][:limit]
+        return {"active":len(active),"jobs":[{**public_job(job),"queue_position":positions.get(job["id"])}
+                                              for job in active+recent]}
+
     @app.get("/api/jobs/{jid}")
     def job_status(jid: str):
         return public_job(get_job(jid))
@@ -479,7 +490,10 @@ def create_app(data_dir=None):
         job = get_job(jid)
         if job["status"] != "completed":
             raise HTTPException(409, "字幕尚未就绪")
-        return FileResponse(store.directory / "exports" / job["id"] / "subtitles.srt", filename="subtitles.srt")
+        path=store.directory / "exports" / job["id"] / "subtitles.srt"
+        if not path.is_file():
+            raise HTTPException(404, "字幕文件不存在，请重新导出。")
+        return FileResponse(path, filename="subtitles.srt")
 
     @app.get("/api/jobs/{jid}/materials/{name}")
     def material_download(jid: str, name: str):
@@ -499,6 +513,8 @@ def create_app(data_dir=None):
         path = store.directory / "exports" / job["id"] / "storyboard.json"
         if job["status"] == "completed" and path.is_file():
             return FileResponse(path, filename="storyboard.json")
+        if not job.get("snapshot"):
+            raise HTTPException(404, "这次历史导出没有保留分镜快照。")
         return Response(json.dumps(job["snapshot"], ensure_ascii=False, indent=2), media_type="application/json",
                         headers={"Content-Disposition": 'attachment; filename="storyboard.json"'})
 

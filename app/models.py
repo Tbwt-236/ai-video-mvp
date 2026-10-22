@@ -96,6 +96,17 @@ class ProjectState(BaseModel):
     archived: bool
 
 
+class VariantsRequest(ProjectEdit):
+    aspects: list[Literal["9:16", "16:9", "1:1"]] = Field(min_length=1, max_length=3)
+
+    @field_validator("aspects")
+    @classmethod
+    def unique_aspects(cls, values):
+        if len(values) != len(set(values)):
+            raise ValueError("每种画幅只需选择一次")
+        return values
+
+
 class VersionRequest(BaseModel):
     version: int = Field(ge=1)
 

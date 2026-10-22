@@ -537,6 +537,32 @@ document.addEventListener("click",event=> {
 });
 $("#save-board").addEventListener("click",async()=> { if(await saveBoard())toast("分镜已保存，预览已更新。"); });
 $("#save-top").addEventListener("click",async()=> { if(await saveBoard())toast("分镜已保存，预览已更新。"); });
+$("#create-variants").addEventListener("click",()=>{
+  if(!state.current || !canLeave())return;
+  $("#variants-form").hidden=false;$("#variants-results").hidden=true;showError("#variants-error");
+  $$('[name="variant-aspect"]').forEach(el=>el.checked=el.value!==$("#board-aspect").value);
+  $("#variants-dialog").showModal();
+});
+$("#variants-close").addEventListener("click",()=>{if(!state.saving)$("#variants-dialog").close();});
+$("#variants-dialog").addEventListener("cancel",event=>{if(state.saving)event.preventDefault();});
+$("#variants-form").addEventListener("submit",async event=>{
+  event.preventDefault();if(state.saving || !state.current)return;
+  const aspects=$$('[name="variant-aspect"]:checked').map(el=>el.value);
+  if(!aspects.length){showError("#variants-error","请至少选择一种画幅。");return;}
+  try {
+    const body={...readEdit(),aspects};state.saving=true;
+    $("#variants-submit").disabled=true;$("#variants-submit").textContent="正在创建独立作品…";showError("#variants-error");
+    const projects=await api(`/api/projects/${state.current.id}/variants`,{method:"POST",body:JSON.stringify(body)});
+    $("#variants-form").hidden=true;$("#variants-results").hidden=false;
+    $("#variants-results").innerHTML='<p>已创建 '+projects.length+' 个独立作品。打开后检查构图，原草稿仍保留。</p>'+projects.map(project=>`<button class="variant-result" data-open-variant="${project.id}"><img src="${previewUrl(project,project.cover_scene||0)}" alt="${esc(project.aspect)} 画幅预览"><span><b>${esc(project.title)}</b><small>打开作品，检查构图与字幕 →</small></span></button>`).join("");
+    await refreshProjects();
+  } catch(error){showError("#variants-error",error.message);}
+  finally {state.saving=false;$("#variants-submit").disabled=false;$("#variants-submit").textContent="创建选定画幅";}
+});
+$("#variants-results").addEventListener("click",event=>{
+  const button=event.target.closest("[data-open-variant]");if(!button || state.saving)return;
+  $("#variants-dialog").close();openProject(button.dataset.openVariant);
+});
 $("#fork-draft").addEventListener("click",async()=>{
   if(!state.current || state.saving || state.uploading)return;
   try {
@@ -568,6 +594,7 @@ $("#export-video").addEventListener("click",async()=> {
     if(!check.ready)throw new Error(check.blocking.join(" "));
     if(state.dirty || state.current.version!==body.version || JSON.stringify(exportSettings())!==JSON.stringify(settings))throw new Error("内容或导出设置已改变，请重新导出。");
     const job=await api(`/api/projects/${id}/render`,{method:"POST",body:JSON.stringify(body)});
+    refreshQueue();
     if(state.current?.id===id)handleJob(job);
   } catch(error){showError("#export-error",error.message);$("#export-video").disabled=false;}
   finally{state.exporting=false;}
@@ -642,6 +669,7 @@ async function init(){
   try{
     const [config,,health]=await Promise.all([api("/api/config"),refreshProjects(),api("/api/health")]);
     state.config=config;
+    refreshQueue();
     setupMerchantCatalog();
     $("#showcase-section").hidden=!config.showcases?.length;
     $("#showcase-options").innerHTML=(config.showcases||[]).map(item=>`<button type="button" data-showcase="${item.id}" class="showcase-card"><img src="${item.image}" alt="${esc(item.title)} AI 演示照片" loading="lazy"><span>${esc(item.title)} <i>↗</i></span><small>${esc(item.description)}</small></button>`).join("");
@@ -869,6 +897,47 @@ function updateDock() {
   $("#mobile-dock").hidden=!state.current || $("#studio-view").hidden;
   document.body.classList.toggle("has-mobile-dock",!$("#mobile-dock").hidden);
 }
+
+async function refreshQueue() {
+  clearTimeout(state.queueTimer);
+  if(state.queueLoading || state.queueBusy){state.queueTimer=setTimeout(refreshQueue,3000);return;}
+  state.queueLoading=true;
+  try {
+    const result=await api("/api/jobs?limit=20");state.queueJobs=result.jobs;
+    $("#queue-count").textContent=result.active;$("#queue-count").hidden=!result.active;
+    $("#queue-open").classList.toggle("has-active",result.active>0);
+    $("#queue-summary").textContent=result.active ? `${result.active} 个任务正在处理或等待。可继续编辑作品；保持本地服务运行即可。` : "最近 20 次导出记录。成片完成后可从这里打开或下载。";
+    const status={queued:"等待中",rendering:"合成中",cancelling:"取消中",cancelled:"已取消",completed:"已完成",failed:"失败"};
+    $("#queue-list").innerHTML=result.jobs.length ? result.jobs.map(job=>{
+      const active=["queued","rendering","cancelling"].includes(job.status);
+      const title=job.title || "历史作品";
+      return `<article class="queue-item"><div class="queue-item-title"><b>${esc(title)}</b><span class="${job.status}">${status[job.status] || esc(job.status)}</span></div><small>${esc(job.aspect || "")} · ${job.quality || "720p"} · 版本 ${job.version} · ${new Date(job.created_at).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</small>${active ? `<progress max="100" value="${job.progress || 0}" aria-label="${esc(title)}导出进度"></progress><p>${esc(job.queue_position ? "排队第 "+job.queue_position+" 位" : job.message || "处理中")} · ${job.progress || 0}%</p>` : job.status==="failed" ? `<p class="queue-failure">${esc(job.error || "导出失败，请打开作品后重试。")}</p>` : ""}<div class="queue-item-actions"><button data-queue-action="open" data-job="${job.id}">${job.status==="completed" ? "查看成片":"打开作品"}</button>${active ? `<button data-queue-action="cancel" data-job="${job.id}" ${job.status==="cancelling" ? "disabled":""}>取消导出</button>` : job.status==="completed" ? `<a href="/api/jobs/${job.id}/video.mp4?download=true" download>下载 MP4</a>` : ""}</div></article>`;
+    }).join("") : '<p class="empty-queue">还没有导出记录，完成分镜后试试「导出视频」。</p>';
+    showError("#queue-error");
+  } catch(error){if($("#queue-dialog").open)showError("#queue-error",error.message);}
+  finally {state.queueLoading=false;state.queueTimer=setTimeout(refreshQueue,document.hidden ? 30000 : (state.queueJobs?.some(job=>["queued","rendering","cancelling"].includes(job.status)) ? 4000 : 15000));}
+}
+$("#queue-open").addEventListener("click",()=>{$("#queue-dialog").showModal();refreshQueue();});
+$("#queue-close").addEventListener("click",()=>$("#queue-dialog").close());
+$("#queue-refresh").addEventListener("click",refreshQueue);
+$("#queue-list").addEventListener("click",async event=>{
+  const button=event.target.closest("[data-queue-action]");if(!button || state.queueBusy)return;
+  const job=state.queueJobs?.find(item=>item.id===button.dataset.job);if(!job)return;
+  if(button.dataset.queueAction==="open"){
+    if(!canLeave())return;
+    $("#queue-dialog").close();await openProject(job.project_id);
+    if(state.current?.id===job.project_id && job.status==="completed")handleJob(job,true);
+    return;
+  }
+  state.queueBusy=true;button.disabled=true;
+  try {
+    const updated=await api(`/api/jobs/${job.id}/cancel`,{method:"POST",body:"{}"});
+    if(state.job?.id===job.id)handleJob(updated,true);
+    toast("已请求取消，作品与照片会保留。");
+  }catch(error){showError("#queue-error",error.message);}
+  finally{state.queueBusy=false;refreshQueue();}
+});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshQueue();});
 $("#mobile-dock").addEventListener("click",async event=>{
   const button=event.target.closest("[data-mobile]");if(!button || !state.current)return;
   if(button.dataset.mobile==="save"){if(await saveBoard())toast("分镜已保存。");return;}

@@ -5,7 +5,6 @@ import json
 import os
 import shutil
 import struct
-import subprocess
 import wave
 from functools import lru_cache
 from pathlib import Path
@@ -149,7 +148,7 @@ def scene_image(project, index, size=None, asset_dir=None):
     return im
 
 
-def make_music(path, duration):
+def make_music(path, duration, cancel=None):
     """Original quiet sine-pad soundtrack, generated locally (no voice-over)."""
     rate = 22050
     chord = [130.81, 164.81, 196.00, 261.63]
@@ -158,6 +157,8 @@ def make_music(path, duration):
         out.setsampwidth(2)
         out.setframerate(rate)
         for second in range(math.ceil(duration)):
+            if cancel:
+                cancel()
             buffer = bytearray()
             for i in range(min(rate, round(duration*rate)-second*rate)):
                 t = second + i / rate
@@ -244,7 +245,7 @@ def render(project, directory, music, progress, asset_dir=None, narration=False,
             args += ["-i", str(scratch/"voice.wav")]
         if music:
             progress(88, "正在合成氛围音轨")
-            make_music(scratch/"music.wav", duration)
+            make_music(scratch/"music.wav", duration, cancel)
             args += ["-i", str(scratch/"music.wav")]
         if narration and music:
             args += ["-filter_complex", f"[2:a]volume={music_volume*.25}[bed];[1:a][bed]amix=inputs=2:duration=first:normalize=0[audio]",

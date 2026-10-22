@@ -47,6 +47,12 @@ class Store:
         with self.connect() as con:
             con.execute("INSERT OR REPLACE INTO jobs VALUES (?, ?, ?)", (job["id"], job["project_id"], json.dumps(job)))
 
+    def insert_projects(self, projects):
+        """Create a group atomically; never replace an existing project."""
+        with self.connect() as con:
+            con.executemany("INSERT INTO projects VALUES (?, ?)",
+                            [(project["id"], json.dumps(project)) for project in projects])
+
     def get_job(self, jid):
         with self.connect() as con:
             row = con.execute("SELECT body FROM jobs WHERE id=?", (jid,)).fetchone()
