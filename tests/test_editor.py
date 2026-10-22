@@ -33,12 +33,12 @@ def test_project_copy_archive_restore_preserves_materials(studio):
     assert (store.directory/"assets"/p["id"]/f"{asset}.jpg").is_file()
 
 
-def test_archiving_all_projects_does_not_seed_another_demo(studio):
-    client,store=studio
-    for p in client.get("/api/projects").json():
-        assert client.post(f"/api/projects/{p['id']}/archive",json={"version":p["version"],"archived":True}).status_code==200
-    count=len(store.projects(include_archived=True))
-    with TestClient(create_app(store.directory)) as restarted:
+def test_archiving_all_projects_does_not_seed_another_demo(tmp_path):
+    with TestClient(create_app(tmp_path)) as client:
+        for p in client.get("/api/projects").json():
+            assert client.post(f"/api/projects/{p['id']}/archive",json={"version":p["version"],"archived":True}).status_code==200
+        count=len(client.get("/api/projects?include_archived=true").json())
+    with TestClient(create_app(tmp_path)) as restarted:
         assert restarted.get("/api/projects").json()==[]
         assert len(restarted.get("/api/projects?include_archived=true").json())==count
 

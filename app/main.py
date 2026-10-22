@@ -29,6 +29,7 @@ from .merchant import catalog as merchant_catalog, merchant_storyboard
 from .narration import NarrationError, available as narration_available, synthesize
 from .renderer import ROOT, font, render, scene_image, run_ffmpeg
 from .previews import PreviewCache, file_signature
+from .instance import StudioLock
 from .process import RenderCancelled
 from .checks import export_check
 from .portability import MAX_PACKAGE, export_package, import_package
@@ -54,17 +55,20 @@ def create_app(data_dir=None):
 
     @asynccontextmanager
     async def lifespan(app):
-        store.recover_jobs()
-        if not store.projects(include_archived=True):
-            brief = Brief(**{k: v for k, v in EXAMPLES[0].items() if k != "label"})
-            project = {**brief.model_dump(), **offline_storyboard(brief), "id": str(uuid4()),
-                       "version": 1, "created_at": now(), "updated_at": now(), "example": True}
-            store.save_project(project)
-        yield
-        for event, _ in list(controls.values()):
-            event.set()
-        executor.shutdown(wait=True)
-        preview_cache.clear()
+        with StudioLock(store.directory):
+            try:
+                store.recover_jobs()
+                if not store.projects(include_archived=True):
+                    brief = Brief(**{k: v for k, v in EXAMPLES[0].items() if k != "label"})
+                    project = {**brief.model_dump(), **offline_storyboard(brief), "id": str(uuid4()),
+                               "version": 1, "created_at": now(), "updated_at": now(), "example": True}
+                    store.save_project(project)
+                yield
+            finally:
+                for event, _ in list(controls.values()):
+                    event.set()
+                executor.shutdown(wait=True)
+                preview_cache.clear()
 
     app = FastAPI(title="FRAME · AI Video MVP", lifespan=lifespan)
     app.state.store = store

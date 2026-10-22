@@ -18,6 +18,8 @@
 
 启动器自动创建项目内的 .venv 并检查依赖版本。浏览器打开 **http://127.0.0.1:8000**，保留启动终端；Ctrl+C 停止。运行产品不需要 Node.js，中文字体与 FFmpeg 已随项目或依赖提供。
 
+重复启动时会提示已占用的端口。同一个作品目录只允许一个工作台进程运行，退出后自动释放；单独修改端口不会绕过这项数据保护。
+
 只检查环境、不安装或启动：运行 **python bootstrap.py --check**。详细诊断使用项目环境中的 Python：
 
 ~~~bash
@@ -103,7 +105,7 @@ node --test tests/editor.test.cjs tests/http.test.cjs tests/drafts.test.cjs
 node --check web/app.js
 ~~~
 
-当前本地 **115 项 Python、19 项 JavaScript 测试通过**。CI 配置覆盖 Linux Python 3.10/3.11/3.12 和 Windows Python 3.12，实时结果见仓库 Actions。测试包括真实视频解码、1080p 三种画幅、稳定文字、实际音量比、配音/SRT 时轴、取消任务、快照隔离、草稿副本、多画幅回滚、作品包校验、损坏照片检测与断线提示。原生语音和页面操作另通过本机浏览器验证，详见 [验收说明](docs/ACCEPTANCE.md)。
+当前本地 **120 项 Python、19 项 JavaScript 测试通过**。CI 配置覆盖 Linux Python 3.10/3.11/3.12 和 Windows Python 3.12，实时结果见仓库 Actions。测试包括真实视频解码、1080p 三种画幅、稳定文字、实际音量比、配音/SRT 时轴、取消任务、快照隔离、草稿副本、多画幅回滚、作品包校验、损坏照片检测、重复启动保护与断线提示。原生语音和页面操作另通过本机浏览器验证，详见 [验收说明](docs/ACCEPTANCE.md)。
 
 制作可分发 ZIP：运行 **python scripts/build_release.py**。文件生成在项目目录的上一级，含源码、字体、说明、测试和演示作品；采用明确的文件白名单，排除 data、.env、.venv 和 Git 数据。ZIP 内的 RELEASE-MANIFEST.json 记录逐文件 SHA-256，旁边的 .sha256 文件校验完整 ZIP。重新打包自己生成的旧包时加 **--overwrite**。首次运行该包仍需要 Python 和联网安装依赖。
 
