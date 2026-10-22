@@ -20,8 +20,9 @@ def export_check(project, data_dir, settings, voice_available):
                         warnings.append(f"第 {index+1} 幕照片分辨率偏小，放大后可能模糊。")
             except (OSError, ValueError):
                 blocking.append(f"第 {index+1} 幕照片不可读取，请重新上传或移除该照片。")
-        if len(scene["caption"]) > scene["duration"]*5:
-            warnings.append(f"第 {index+1} 幕字幕较长，" + ("将按实际配音长度自动延长镜头。" if settings.narration else "建议延长镜头或开启配音自动对齐。"))
+        spoken=scene.get("voiceover") or scene["caption"]
+        if len(spoken if settings.narration else scene["caption"]) > scene["duration"]*5:
+            warnings.append(f"第 {index+1} 幕" + ("口播较长，将按实际配音长度自动延长镜头。" if settings.narration else "字幕较长，建议延长镜头或开启配音自动对齐。"))
     if project.get("merchant") and photos == 0:
         warnings.append("当前全部为图形背景；加入产品或门店照片，会更便于顾客认识你的小店。")
     if project.get("example"):

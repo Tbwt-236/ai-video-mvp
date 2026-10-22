@@ -218,7 +218,8 @@ function renderScenes() {
         <label>照片放大 <output data-output="zoom">${Number(scene.zoom).toFixed(1)}×</output><input data-field="zoom" type="range" min="1" max="2" step="0.05" value="${scene.zoom}" aria-label="分镜 ${i+1} 照片放大"></label>
         <label>横向取景 <output data-output="crop_x">${Math.round(scene.crop_x*100)}%</output><input data-field="crop_x" type="range" min="0" max="1" step="0.01" value="${scene.crop_x}" aria-label="分镜 ${i+1} 横向取景"></label>
         <label>纵向取景 <output data-output="crop_y">${Math.round(scene.crop_y*100)}%</output><input data-field="crop_y" type="range" min="0" max="1" step="0.01" value="${scene.crop_y}" aria-label="分镜 ${i+1} 纵向取景"></label>
-      </div><p>取景与放大仅对「铺满画面」生效，点击缩略图检查当前镜头。</p></details>
+      </div><p>取景、放大与镜头运动用于「铺满画面」；「完整展示」保持静止，确保照片不被裁切。</p></details>
+      <details class="scene-voice" ${scene.voiceover ? "open":""}><summary>独立口播稿 <small>${scene.voiceover ? "已自定义":"可选 · 默认朗读字幕"}</small></summary><label for="voiceover-${i}">这一幕想说的话</label><textarea id="voiceover-${i}" data-field="voiceover" maxlength="160" placeholder="留空会朗读画面字幕。可在这里写更完整的产品介绍，让画面保持简洁。">${esc(scene.voiceover || "")}</textarea><div class="voice-counter">${(scene.voiceover || "").length} / 160</div><p>开启中文配音后生效。口播字幕文件使用这段文案，画面仍显示上方的简短字幕。</p></details>
       <div class="scene-actions"><button data-scene-action="up" ${i===0 ? "disabled":""} aria-label="上移分镜 ${i+1}">↑ 上移</button><button data-scene-action="down" ${i===p.scenes.length-1 ? "disabled":""} aria-label="下移分镜 ${i+1}">↓ 下移</button><button data-scene-action="duplicate">复制</button><button data-scene-action="cover" ${p.cover_scene===i ? "disabled":""}>设为封面</button><button data-scene-action="remove" ${p.scenes.length===1 ? "disabled":""}>删除</button></div>
     </article>`;
   }).join("");
@@ -231,6 +232,7 @@ function collectEdit() {
       item[input.dataset.field] = ["duration","crop_x","crop_y","zoom"].includes(input.dataset.field) ? Number(input.value) : input.value.trim();
     });
     item.asset_id = card.dataset.assetId || null;
+    item.voiceover=item.voiceover || null;
     return item;
   });
   return {title:$("#project-title").value.trim(),style:$("#board-style").value,aspect:$("#board-aspect").value,scenes,
@@ -356,7 +358,7 @@ function showScene(index) {
   $("#scene-preview").alt=`分镜 ${index+1}：${p.scenes[index].heading}`;
   $("#preview-badge").textContent=`${state.dirty ? "草稿 · ":""}分镜 ${index+1} / ${p.scenes.length}`;
   $("#preview-spec").textContent=p.aspect;
-  $("#preview-hint").textContent="分镜静帧预览 · 导出时加入设定的镜头运动";
+  $("#preview-hint").textContent="分镜静帧预览 · 导出时背景缓动，店名与字幕保持稳定";
   $("#play-preview").disabled=false;$("#next-preview").disabled=false;
   $("#timeline").innerHTML=p.scenes.map((item,i)=>`<button data-preview="${i}" class="${i===index ? "active":""}" style="flex:${Number(item.duration)||1}" aria-label="跳转到分镜 ${i+1}" title="${esc(item.heading)} · ${item.duration}秒"></button>`).join("");
   $$(".scene-card").forEach((card,i)=>card.classList.toggle("active",i===index));
@@ -528,6 +530,10 @@ $("#scenes").addEventListener("input",event=> {
   const output=card.querySelector(`[data-output="${field}"]`);
   if(output)output.textContent=field==="zoom" ? `${Number(event.target.value).toFixed(1)}×` : `${Math.round(Number(event.target.value)*100)}%`;
   if(field==="caption")card.querySelector(".scene-counter").textContent=`${event.target.value.length} / 96`;
+  if(field==="voiceover"){
+    card.querySelector(".voice-counter").textContent=`${event.target.value.length} / 160`;
+    card.querySelector(".scene-voice summary small").textContent=event.target.value.trim() ? "已自定义":"可选 · 默认朗读字幕";
+  }
   markDirty(); updateBoardTotal();
 });
 [$("#project-title"),$("#board-style"),$("#board-aspect"),$("#custom-color"),$("#accent-color")].forEach(el=>el.addEventListener("input",markDirty));
@@ -631,7 +637,7 @@ $("#cancel-export").addEventListener("click",async()=>{
 });
 $("#voice-preview").addEventListener("click",async()=>{
   if(!state.current || !state.config?.narration_available)return;
-  stopVoice();const revision=state.voiceRevision,text=state.draft.scenes[state.scene].caption;
+  stopVoice();const revision=state.voiceRevision,scene=state.draft.scenes[state.scene],text=scene.voiceover || scene.caption;
   if(!text.trim()){toast("请先填写当前分镜的字幕。",true);return;}
   const controller=new AbortController();state.voiceController=controller;updateAudioControls();
   $("#voice-preview").textContent="正在准备试听…";

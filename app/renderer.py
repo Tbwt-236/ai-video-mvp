@@ -57,7 +57,7 @@ def text_block(draw, text, x, y, width, height, size, fill):
         y += int(size * 1.48)
 
 
-def scene_image(project, index, size=None, asset_dir=None):
+def scene_layers(project, index, size=None, asset_dir=None):
     w, h = size or SIZES[project["aspect"]]
     scene = project["scenes"][index]
     dark, mid, accent, light = PALETTES[project["style"]]
@@ -105,6 +105,7 @@ def scene_image(project, index, size=None, asset_dir=None):
             delta = n*max(2, radius//10)
             draw.ellipse((cx-radius+delta//2, cy-radius+delta, cx+radius-delta//2, cy+radius-delta), outline=accent, width=2)
         draw.ellipse((cx-7, cy-7, cx+7, cy+7), fill=light)
+    overlay = Image.new("RGBA", (w, h))
     if scene.get("asset_id"):
         if asset_dir is None:
             raise ValueError("缺少门店照片目录")
@@ -121,7 +122,6 @@ def scene_image(project, index, size=None, asset_dir=None):
                 left = (photo.width-crop_w)*scene.get("crop_x", .5)
                 top = (photo.height-crop_h)*scene.get("crop_y", .5)
                 im = photo.resize((w, h), Image.Resampling.LANCZOS, box=(left, top, left+crop_w, top+crop_h))
-        overlay = Image.new("RGBA", (w, h))
         shade = ImageDraw.Draw(overlay)
         for y in range(h):
             alpha = int(35 + 195 * max(0, min(1, (y/h - .27) / .51)))
@@ -132,8 +132,8 @@ def scene_image(project, index, size=None, asset_dir=None):
             if y < h*.16:
                 alpha = max(alpha, int(115*(1-y/(h*.16))))
             shade.line((0, y, w, y), fill=(*dark, alpha))
-        im = Image.alpha_composite(im.convert("RGBA"), overlay).convert("RGB")
-        draw = ImageDraw.Draw(im)
+    # Typography and its readability shade stay still while the background moves.
+    draw = ImageDraw.Draw(overlay)
     scale = min(w, h) / 720
     brand = (project.get("merchant") or {}).get("store_name", "F R A M E   /   STUDIO")
     text_block(draw, brand, margin, margin, w-2*margin-100*scale, h*.07, max(12, int(16*scale)), light)
@@ -145,7 +145,12 @@ def scene_image(project, index, size=None, asset_dir=None):
     text_block(draw, scene["caption"], margin, int(h*(heading_fraction+.205)), w-2*margin, h*.135, int(25*scale), caption_color)
     draw.line((margin, h-margin, w-margin, h-margin), fill=mid, width=2)
     draw.line((margin, h-margin, margin+int((w-2*margin)*(index+1)/len(project["scenes"])), h-margin), fill=accent, width=3)
-    return im
+    return im, overlay
+
+
+def scene_image(project, index, size=None, asset_dir=None):
+    background, foreground=scene_layers(project,index,size,asset_dir)
+    return Image.alpha_composite(background.convert("RGBA"),foreground).convert("RGB")
 
 
 def make_music(path, duration, cancel=None):
@@ -185,7 +190,7 @@ def srt(project, narrated=False):
         end = start + scene["duration"]
         cue_start = start + (.3 if narrated else 0)
         cue_end = start + .3 + scene["speech_duration"] if narrated else end
-        text = scene['caption'] if narrated else f"{scene['heading']}\n{scene['caption']}"
+        text = (scene.get("voiceover") or scene["caption"]) if narrated else f"{scene['heading']}\n{scene['caption']}"
         chunks.append(f"{i+1}\n{stamp(cue_start)} --> {stamp(cue_end)}\n{text}\n")
         start = end
     return "\n".join(chunks)
@@ -205,7 +210,7 @@ def render(project, directory, music, progress, asset_dir=None, narration=False,
         if narration:
             for i, scene in enumerate(project["scenes"]):
                 progress(4 + i, f"正在朗读字幕 {i+1} / {len(project['scenes'])}")
-                spoken = synthesize(scene["caption"], scratch/f"voice-{i}.wav", convert, rate=speech_rate, cancel=cancel)
+                spoken = synthesize(scene.get("voiceover") or scene["caption"], scratch/f"voice-{i}.wav", convert, rate=speech_rate, cancel=cancel)
                 scene["speech_duration"] = spoken
                 scene["duration"] = max(scene["duration"], math.ceil((spoken+.6)*FPS)/FPS)
             if sum(s["duration"] for s in project["scenes"]) > 120:
@@ -213,22 +218,28 @@ def render(project, directory, music, progress, asset_dir=None, narration=False,
         for i, scene in enumerate(project["scenes"]):
             if cancel:
                 cancel()
-            scene_image(project, i, size=(w,h), asset_dir=asset_dir).save(scratch / f"scene-{i}.png")
+            background, foreground=scene_layers(project,i,size=(w,h),asset_dir=asset_dir)
+            background.save(scratch/f"background-{i}.png")
+            foreground.save(scratch/f"text-{i}.png")
             if i == min(project.get("cover_scene", 0), len(project["scenes"])-1):
-                shutil.copyfile(scratch / f"scene-{i}.png", directory / "cover.png")
+                Image.alpha_composite(background.convert("RGBA"),foreground).convert("RGB").save(directory/"cover.png")
             frames = round(scene["duration"] * FPS)
             mode = scene.get("motion", "zoom_in")
-            zoom = {"zoom_in": "min(1+on*0.00022,1.04)", "zoom_out": "max(1.04-on*0.00022,1)",
+            if scene.get("asset_id") and scene.get("photo_fit")=="contain":
+                mode="still"
+            zoom = {"zoom_in": f"1+0.04*on/{max(1,frames-1)}", "zoom_out": f"1.04-0.04*on/{max(1,frames-1)}",
                     "still": "1", "pan_left": "1.04", "pan_right": "1.04"}[mode]
             horizontal = "iw/2-iw/zoom/2"
             if mode == "pan_left":
                 horizontal = f"(iw-iw/zoom)*(1-on/{max(1,frames-1)})"
             elif mode == "pan_right":
                 horizontal = f"(iw-iw/zoom)*on/{max(1,frames-1)}"
-            filters = (f"scale={w*2}:{h*2},zoompan=z='{zoom}':"
-                       f"x='{horizontal}':y='ih/2-ih/zoom/2':d={frames}:s={w}x{h}:fps={FPS},"
-                       f"fade=t=in:d=0.25,fade=t=out:st={scene['duration']-.25}:d=0.25,format=yuv420p")
-            convert(["-i", str(scratch/f"scene-{i}.png"), "-vf", filters,
+            filters = (f"[0:v]scale={w*2}:{h*2},zoompan=z='{zoom}':"
+                       f"x='{horizontal}':y='ih/2-ih/zoom/2':d={frames}:s={w}x{h}:fps={FPS}[moving];"
+                       f"[moving][1:v]overlay=0:0:repeatlast=1,"
+                       f"fade=t=in:d=0.25,fade=t=out:st={scene['duration']-.25}:d=0.25,format=yuv420p[out]")
+            convert(["-i",str(scratch/f"background-{i}.png"),"-i",str(scratch/f"text-{i}.png"),
+                        "-filter_complex_threads","1","-filter_complex",filters,"-map","[out]",
                         "-frames:v", str(frames), "-an", "-c:v", "libx264", "-preset", "veryfast",
                         "-crf", "21", "-threads", "2", str(scratch/f"clip-{i}.mp4")])
             progress(int(8 + (i+1)/len(project["scenes"])*77), f"已合成分镜 {i+1} / {len(project['scenes'])}")

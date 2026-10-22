@@ -41,3 +41,11 @@ test("legacy projects gain composition defaults without changing content", () =>
   edit.scenes[0].duration=0;
   assert.throws(()=>editor.validate(edit),/2–20/);
 });
+test("voiceover drafts remain independent when duplicated and enforce limits", () => {
+  const original=project();original.scenes[0].voiceover="让画面简短，让口播完整。";
+  const next=editor.transform(original,"duplicate",0);
+  next.scenes[1].voiceover="另一种讲述方式。";
+  assert.equal(next.scenes[0].voiceover,original.scenes[0].voiceover);
+  next.scenes[1].voiceover="长".repeat(161);
+  assert.throws(()=>editor.validate(next),/160/);
+});

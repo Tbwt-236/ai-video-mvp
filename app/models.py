@@ -22,6 +22,7 @@ class Brief(BaseModel):
 class Scene(BaseModel):
     heading: str = Field(min_length=1, max_length=32)
     caption: str = Field(min_length=1, max_length=96)
+    voiceover: str | None = Field(default=None, max_length=160)
     duration: int = Field(ge=2, le=20)
     asset_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     crop_x: float = Field(default=.5, ge=0, le=1, allow_inf_nan=False)
@@ -30,6 +31,11 @@ class Scene(BaseModel):
     photo_fit: Literal["cover", "contain"] = "cover"
     motion: Literal["zoom_in", "zoom_out", "still", "pan_left", "pan_right"] = "zoom_in"
     text_position: Literal["bottom", "center", "top"] = "bottom"
+
+    @field_validator("voiceover")
+    @classmethod
+    def clean_voiceover(cls,value):
+        return " ".join(value.split()) or None if value is not None else None
 
     @field_validator("heading", "caption")
     @classmethod
@@ -133,7 +139,7 @@ class RenderRequest(BaseModel):
 
 
 class VoicePreview(BaseModel):
-    text: str = Field(min_length=1, max_length=96)
+    text: str = Field(min_length=1, max_length=160)
     speech_rate: int = Field(default=210, ge=140, le=280)
 
     @field_validator("text")

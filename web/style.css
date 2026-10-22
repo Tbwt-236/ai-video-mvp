@@ -2696,6 +2696,13 @@ dialog li p {
 #cancel-export { margin-top:10px;width:100%; }
 
 .mobile-dock { display:none; }
+.scene-voice { border-top:1px solid #35402e;padding-top:12px;margin-top:12px; }
+.scene-voice summary { font-size:11px;color:#bfcdac;cursor:pointer; }
+.scene-voice summary small { color:#8a9b79;font-size:10px;padding-left:8px; }
+.scene-voice label { display:block;font-size:10px;color:#a6b793;margin:15px 0 8px; }
+.scene-voice textarea { width:100%;min-height:78px;font-size:12px;line-height:1.8;resize:vertical; }
+.scene-voice p { font-size:10px;color:#8d9c7d;line-height:1.7;margin-bottom:4px; }
+.voice-counter { text-align:right;color:#7d8e6e;font-size:10px;margin-top:5px; }
 .queue-open { display:flex;align-items:center;gap:7px;padding:7px 9px;border:1px solid #394431;border-radius:7px;background:#222a1c;color:#bac9a6;font-size:11px;white-space:nowrap; }
 .queue-open.has-active { border-color:#9aaf79;color:#dfefbc; }
 #queue-count { min-width:16px;padding:1px 4px;border-radius:5px;background:#c2d69b;color:#222b18;font-size:10px; }
