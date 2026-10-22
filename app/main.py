@@ -13,6 +13,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 
+from PIL import Image
+
 from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -26,6 +28,7 @@ from .assets import MAX_UPLOAD, list_photos, photo_dimensions, photo_path, save_
 from .merchant import catalog as merchant_catalog, merchant_storyboard
 from .narration import NarrationError, available as narration_available, synthesize
 from .renderer import ROOT, font, render, scene_image, run_ffmpeg
+from .previews import PreviewCache, file_signature
 from .process import RenderCancelled
 from .checks import export_check
 from .portability import MAX_PACKAGE, export_package, import_package
@@ -46,6 +49,7 @@ def create_app(data_dir=None):
     voice_lock = threading.Lock()
     import_lock = threading.Lock()
     music_lock = threading.Lock()
+    preview_cache = PreviewCache()
     controls = {}
 
     @asynccontextmanager
@@ -60,6 +64,7 @@ def create_app(data_dir=None):
         for event, _ in list(controls.values()):
             event.set()
         executor.shutdown(wait=True)
+        preview_cache.clear()
 
     app = FastAPI(title="FRAME · AI Video MVP", lifespan=lifespan)
     app.state.store = store
@@ -128,7 +133,7 @@ def create_app(data_dir=None):
                 "showcases": available_showcases(),
                 "renderer": "门店照片短片 · H.264 MP4 · 720p / 1080p · 24 fps",
                 "narration_available": narration_available(),
-                "narration_note": "本机中文语音 · 朗读画面字幕" if narration_available() else "本机未提供中文配音，仍可导出照片、字幕与音乐"}
+                "narration_note": "本机中文语音 · 朗读口播稿或画面字幕" if narration_available() else "本机未提供中文配音，仍可导出照片、字幕与音乐"}
 
     @app.get("/api/health")
     def health():
@@ -324,11 +329,24 @@ def create_app(data_dir=None):
         return list_photos(store.directory / "assets" / project["id"])
 
     @app.get("/api/projects/{pid}/assets/{aid}.jpg")
-    def photo(pid: str, aid: str):
+    def photo(pid: str, aid: str, max_size: int | None = Query(default=None,ge=96,le=720)):
         project = get_project(pid)
         path = photo_path(store.directory / "assets" / project["id"], aid)
         if path is None:
             raise HTTPException(404, "找不到这张照片")
+        if max_size is not None:
+            try:
+                key=("photo",file_signature(path),max_size)
+                def thumbnail():
+                    buffer=io.BytesIO()
+                    photo_dimensions(path)
+                    with Image.open(path) as image:
+                        image.thumbnail((max_size,max_size),Image.Resampling.LANCZOS)
+                        image.convert("RGB").save(buffer,format="JPEG",quality=85)
+                    return buffer.getvalue()
+                return Response(preview_cache.get(key,thumbnail),media_type="image/jpeg")
+            except (OSError,ValueError) as exc:
+                raise HTTPException(400,"这张照片无法读取，请重新上传。") from exc
         return FileResponse(path, media_type="image/jpeg")
 
     @app.put("/api/projects/{pid}")
@@ -347,23 +365,35 @@ def create_app(data_dir=None):
         return project
 
     @app.get("/api/projects/{pid}/scenes/{index}.png")
-    def preview(pid: str, index: int):
+    def preview(pid: str, index: int, max_size: int | None = Query(default=None,ge=96,le=720)):
         project = get_project(pid)
         if not 0 <= index < len(project["scenes"]):
             raise HTTPException(404, "找不到这个分镜")
-        return scene_preview(project,index)
+        return scene_preview(project,index,max_size,use_cache=True)
 
-    def scene_preview(project,index):
+    def scene_preview(project,index,max_size=None,use_cache=False):
         directory=store.directory / "assets" / project["id"]
         asset_id=project["scenes"][index].get("asset_id")
+        signature=None
         if asset_id:
             try:
-                photo_dimensions(directory / f"{asset_id}.jpg")
+                signature=file_signature(directory / f"{asset_id}.jpg")
             except (OSError,ValueError) as exc:
                 raise HTTPException(400,"这幕的照片无法读取，请重新上传或移除照片。") from exc
-        buffer=io.BytesIO()
-        scene_image(project,index,asset_dir=directory).save(buffer,format="PNG")
-        return Response(buffer.getvalue(),media_type="image/png")
+        def paint():
+            if asset_id:
+                try:
+                    photo_dimensions(directory / f"{asset_id}.jpg")
+                except (OSError,ValueError) as exc:
+                    raise HTTPException(400,"这幕的照片无法读取，请重新上传或移除照片。") from exc
+            buffer=io.BytesIO()
+            image=scene_image(project,index,asset_dir=directory)
+            if max_size is not None:
+                image.thumbnail((max_size,max_size),Image.Resampling.LANCZOS)
+            image.save(buffer,format="PNG")
+            return buffer.getvalue()
+        key=("scene",json.dumps(project,sort_keys=True),index,max_size,signature)
+        return Response(preview_cache.get(key,paint) if use_cache else paint(),media_type="image/png")
 
     @app.post("/api/projects/{pid}/preview")
     def draft_preview(pid: str, edit: PreviewRequest):

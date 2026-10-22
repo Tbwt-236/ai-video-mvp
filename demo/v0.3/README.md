@@ -26,3 +26,5 @@
 2026-10-23：三支 MP4 均完成 FFmpeg 全片解码，无解码错误；三份作品包分别导入全新临时数据库，并逐幕成功生成预览。原生语音与播放器 metadata 在本机浏览器核对。机器可读记录见 [manifest.json](manifest.json)。
 
 原图和完整生成提示词见 [咖啡素材](../merchant/README.md) 及 [花店、烘焙素材](../showcase/README.md)。均使用内置 image_gen 工具，未使用 CLI/API fallback。
+
+界面实测截图：[桌面工作台](studio.png)、[手机成片预览](mobile.png)、[手机拍摄清单](shooting-plan.png)。[拍摄清单 TXT](shooting-plan.txt) 是从工作台实际下载的五幕宠物门店虚构示例，可用于了解素材准备方式。

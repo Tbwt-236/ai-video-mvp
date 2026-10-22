@@ -3,7 +3,7 @@
   "use strict";
   const clone = value => JSON.parse(JSON.stringify(value));
   function scene(value = {}) {
-    return {heading:"新的画面", caption:"在这里写下你想传递的话。", voiceover:null, duration:5, asset_id:null,
+    return {heading:"新的画面", caption:"在这里写下你想传递的话。", voiceover:null, photo_hint:null, duration:5, asset_id:null,
       crop_x:.5, crop_y:.5, zoom:1, photo_fit:"cover", motion:"zoom_in", text_position:"bottom", ...clone(value)};
   }
   function editable(project) {
@@ -20,6 +20,7 @@
       if (!item.heading.trim() || !item.caption.trim()) throw new Error("每个分镜都需要标题和字幕。");
       if (item.heading.length > 32 || item.caption.length > 96) throw new Error("标题不超过 32 字，字幕不超过 96 字。");
       if (item.voiceover!=null && (typeof item.voiceover!=="string" || item.voiceover.length>160)) throw new Error("每幕独立口播稿不超过 160 字。");
+      if (item.photo_hint!=null && (typeof item.photo_hint!=="string" || item.photo_hint.length>80)) throw new Error("每幕拍摄建议不超过 80 字。");
       if (!Number.isInteger(item.duration) || item.duration < 2 || item.duration > 20) throw new Error("每幕时长需要是 2–20 秒的整数。");
     }
     if (edit.scenes.reduce((sum,item) => sum + item.duration, 0) > 60) throw new Error("分镜总时长不能超过 60 秒。开启配音后可自动延长。");

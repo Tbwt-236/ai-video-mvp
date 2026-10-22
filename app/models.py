@@ -23,6 +23,7 @@ class Scene(BaseModel):
     heading: str = Field(min_length=1, max_length=32)
     caption: str = Field(min_length=1, max_length=96)
     voiceover: str | None = Field(default=None, max_length=160)
+    photo_hint: str | None = Field(default=None, max_length=80)
     duration: int = Field(ge=2, le=20)
     asset_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     crop_x: float = Field(default=.5, ge=0, le=1, allow_inf_nan=False)
@@ -32,9 +33,9 @@ class Scene(BaseModel):
     motion: Literal["zoom_in", "zoom_out", "still", "pan_left", "pan_right"] = "zoom_in"
     text_position: Literal["bottom", "center", "top"] = "bottom"
 
-    @field_validator("voiceover")
+    @field_validator("voiceover", "photo_hint")
     @classmethod
-    def clean_voiceover(cls,value):
+    def clean_optional_copy(cls,value):
         return " ".join(value.split()) or None if value is not None else None
 
     @field_validator("heading", "caption")

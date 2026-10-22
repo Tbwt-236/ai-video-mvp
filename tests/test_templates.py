@@ -16,6 +16,8 @@ def test_all_industries_keep_supplied_facts_without_adding_claims(scenario, dura
         assert sum(s["duration"] for s in board["scenes"]) == duration
         assert "全城最低" not in text and "销量第一" not in text
         assert board["merchant"]["industry"] == category["id"]
+        assert all(0<len(scene["photo_hint"])<=80 for scene in board["scenes"])
+        assert board["scenes"][-1]["photo_hint"]==category["photos"][-1]
         if scenario=="offer":
             assert facts["offer"] in board["scenes"][0]["caption"]
         if category["id"] not in ["coffee","food","bakery"]:
@@ -51,3 +53,20 @@ def test_template_boundaries_and_catalog(studio):
         assert response.status_code==201,response.text
         p=response.json()
         assert len(p["title"])<=32 and all(len(s["caption"])<=96 for s in p["scenes"])
+
+
+def test_shooting_guidance_follows_reordered_scenes_and_portable_copies(studio):
+    client,_=studio
+    category=catalog()["industries"][0]
+    facts=category["example"] | {"industry":"coffee","scenario":"story","duration":60}
+    project=client.post("/api/merchant-projects",json=facts).json()
+    assert project["scenes"][0]["photo_hint"]==category["photos"][1]
+    assert project["scenes"][2]["photo_hint"]==category["photos"][0]
+    body=edit_body(project,scenes=list(reversed(project["scenes"])))
+    project=client.put(f"/api/projects/{project['id']}",json=body).json()
+    expected=[scene["photo_hint"] for scene in project["scenes"]]
+    variant=client.post(f"/api/projects/{project['id']}/variants",json={**edit_body(project),"aspects":["1:1"]}).json()[0]
+    assert [scene["photo_hint"] for scene in variant["scenes"]]==expected
+    package=client.get(f"/api/projects/{project['id']}/package.zip").content
+    imported=client.post("/api/projects/import",content=package,headers={"Content-Type":"application/zip"}).json()
+    assert [scene["photo_hint"] for scene in imported["scenes"]]==expected

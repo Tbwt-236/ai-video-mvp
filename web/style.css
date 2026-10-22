@@ -2607,6 +2607,17 @@ dialog li p {
 .photo-upload input { position:absolute; inset:0; opacity:0; width:100%; cursor:pointer; }
 .photo-upload:focus-within { outline:2px solid #c9dda7; outline-offset:4px; }
 .photo-status { font-size:11px; color:#94a18f; }
+.shot-hint { margin:10px 0 2px;color:#a9b99a;font-size:11px;line-height:1.6; }
+.shooting-list { padding:0;list-style:none;display:grid;gap:12px;margin:20px 0; }
+.shooting-list li { padding:15px;border:1px solid #3c4835;border-radius:10px;background:#1b2119; }
+.shooting-list li>div { display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px; }
+.shooting-list b { font-size:13px;font-weight:500;overflow-wrap:anywhere; }
+.shooting-list span { color:#b8cd8e;font-size:10px;white-space:nowrap; }
+.shooting-list p { font-size:13px;line-height:1.7;color:#d3dfc7;margin:12px 0 7px; }
+.shooting-list small { color:#899681;font-size:11px;line-height:1.7;display:block;overflow-wrap:anywhere; }
+.shooting-tips { color:#95a78a;line-height:1.8;font-size:12px;margin-bottom:20px; }
+.shooting-tips b { color:#d3dfc7;font-weight:500; }
+#shooting-dialog { width:min(650px,90vw);max-height:85vh;overflow:auto; }
 .remove-photo { border:0; background:none; color:#c1b6a6; cursor:pointer; font-size:11px; }
 .download-secondary { flex-wrap:wrap; row-gap:13px; }
 @media(max-width:600px) { .merchant-grid { grid-template-columns:1fr; } .merchant-intro { align-items:flex-start; } }
@@ -2777,7 +2788,7 @@ dialog li p {
   .scene-actions button { min-height:32px; }
   .scene-photo { gap:10px; }
   .composition input[type=range] { min-height:30px; }
-  #merchant-dialog,#media-dialog { width:calc(100vw - 24px);max-width:none;padding:20px; }
+  #merchant-dialog,#media-dialog,#shooting-dialog { width:calc(100vw - 24px);max-width:none;padding:20px; }
 }
 
 @media(prefers-reduced-motion:reduce) {

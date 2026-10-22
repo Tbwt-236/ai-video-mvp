@@ -40,29 +40,30 @@ def catalog():
 
 def merchant_storyboard(brief: MerchantBrief):
     industry = INDUSTRIES[brief.industry]
-    closing = ("下次见，就在这里", f"{brief.address}。{brief.cta}")
-    product = (brief.product, f"今日主推：{brief.product}。")
-    benefit = (industry["heading"], brief.selling_point)
-    offer = ("这次到店，可以了解", brief.offer or brief.cta)
-    opening = (brief.store_name, f"欢迎来到{brief.store_name}。")
+    product_photo, setting_photo, arrival_photo = industry["photos"]
+    closing = ("下次见，就在这里", f"{brief.address}。{brief.cta}", arrival_photo)
+    product = (brief.product, f"今日主推：{brief.product}。", product_photo)
+    benefit = (industry["heading"], brief.selling_point, setting_photo)
+    offer = ("这次到店，可以了解", brief.offer or brief.cta, product_photo)
+    opening = (brief.store_name, f"欢迎来到{brief.store_name}。", setting_photo)
     if brief.duration > 30:
         lines = {
             "visit": [opening, product, benefit, offer, closing],
             "product": [product, benefit, opening, offer, closing],
-            "offer": [("店里的活动，告诉你", brief.offer), product, benefit, opening, closing],
+            "offer": [("店里的活动，告诉你", brief.offer, product_photo), product, benefit, opening, closing],
             "story": [opening, benefit, product, offer, closing],
         }[brief.scenario]
     else:
-        benefit_with_offer = (benefit[0], brief.selling_point + (f" {brief.offer}" if brief.offer else ""))
+        benefit_with_offer = (benefit[0], brief.selling_point + (f" {brief.offer}" if brief.offer else ""), setting_photo)
         lines = {
-            "visit": [(brief.store_name, product[1]), benefit_with_offer, closing],
+            "visit": [(brief.store_name, product[1], product_photo), benefit_with_offer, closing],
             "product": [product, benefit_with_offer, closing],
-            "offer": [(brief.product, brief.offer), benefit, closing],
-            "story": [(brief.store_name, brief.selling_point), (brief.product, product[1] + (f" {brief.offer}" if brief.offer else "")), closing],
+            "offer": [(brief.product, brief.offer, product_photo), benefit, closing],
+            "story": [(brief.store_name, brief.selling_point, setting_photo), (brief.product, product[1] + (f" {brief.offer}" if brief.offer else ""), product_photo), closing],
         }[brief.scenario]
     base, extra = divmod(brief.duration, len(lines))
     return {"title": f"{brief.store_name} · {SCENARIOS[brief.scenario]['label']}", "source": "merchant_template",
             "prompt": f"{brief.store_name}：{brief.product}；{brief.selling_point}；{brief.offer}；{brief.address}",
             "merchant": brief.model_dump(exclude={"style", "aspect", "duration", "example"}),
-            "scenes": [Scene(heading=h, caption=c, duration=base+(i < extra)).model_dump()
-                       for i, (h, c) in enumerate(lines)]}
+            "scenes": [Scene(heading=h, caption=c, photo_hint=hint, duration=base+(i < extra)).model_dump()
+                       for i, (h, c, hint) in enumerate(lines)]}

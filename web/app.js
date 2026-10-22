@@ -34,7 +34,7 @@ function showError(selector, message = "") {
 
 function seconds(value) { return `${String(Math.floor(value/60)).padStart(2,"0")}:${String(value%60).padStart(2,"0")}`; }
 function total() { return state.draft ? state.draft.scenes.reduce((sum,s) => sum + (Number(s.duration)||0),0) : Number($("#duration").value); }
-function previewUrl(project, index) { return `/api/projects/${project.id}/scenes/${index}.png?v=${project.version}`; }
+function previewUrl(project, index, maxSize=null) { return `/api/projects/${project.id}/scenes/${index}.png?v=${project.version}${maxSize ? "&max_size="+maxSize : ""}`; }
 
 function currentRoute() { return !$("#library-view").hidden ? "#library" : state.current ? `#project=${state.current.id}` : "#new"; }
 function rememberRoute(route=currentRoute(),replace=false) {
@@ -43,7 +43,7 @@ function rememberRoute(route=currentRoute(),replace=false) {
 async function restoreRoute() {
   if(!canLeave()){rememberRoute(currentRoute(),true);return;}
   const route=location.hash;
-  if(route==="#library"){setPage("library");return;}
+  if(route==="#library"){await openLibrary();return;}
   const match=route.match(/^#project=([a-f0-9-]{36})$/);
   if(match){await openProject(match[1]);return;}
   if(route==="#new" && state.current)newProject();
@@ -149,13 +149,20 @@ function renderLibrary() {
   const projects = state.projects.filter(p => (filter === "all" || Boolean(p.archived) === (filter === "archived")) && `${p.title} ${p.prompt}`.toLowerCase().includes(query));
   $("#library-count").textContent = projects.length;
   $("#library-grid").innerHTML = projects.length ? projects.map(p =>
-    `<article class="project-card"><button class="project-cover project-open" data-project="${p.id}" aria-label="打开 ${esc(p.title)}"><img src="${previewUrl(p,p.cover_scene||0)}" alt="${esc(p.title)}封面" loading="lazy"><span>${p.archived ? "已归档" : p.example ? "示例作品" : p.source === "deepseek" ? "AI 分镜" : p.source === "merchant_template" ? "门店宣传" : "本地模板"}</span></button><h3>${esc(p.title)}</h3><p>${p.aspect} · ${p.duration} 秒 · ${p.scenes.length} 个分镜</p><div class="project-actions"><button data-project="${p.id}">打开作品</button><button data-project-action="duplicate" data-id="${p.id}">复制</button><button data-project-action="${p.archived ? "restore":"archive"}" data-id="${p.id}">${p.archived ? "恢复":"归档"}</button></div><small class="project-updated">${new Date(p.updated_at).toLocaleDateString("zh-CN")}</small></article>`).join("") : `<div class="empty-library">${query ? "没有找到匹配的作品，试试其他关键词。" : filter === "archived" ? "还没有归档作品。归档后仍可恢复。" : "还没有作品，从一支短片开始。"}</div>`;
+    `<article class="project-card"><button class="project-cover project-open" data-project="${p.id}" aria-label="打开 ${esc(p.title)}"><img src="${previewUrl(p,p.cover_scene||0,480)}" alt="${esc(p.title)}封面" loading="lazy"><span>${p.archived ? "已归档" : p.example ? "示例作品" : p.source === "deepseek" ? "AI 分镜" : p.source === "merchant_template" ? "门店宣传" : "本地模板"}</span></button><h3>${esc(p.title)}</h3><p>${p.aspect} · ${p.duration} 秒 · ${p.scenes.length} 个分镜</p><div class="project-actions"><button data-project="${p.id}">打开作品</button><button data-project-action="duplicate" data-id="${p.id}">复制</button><button data-project-action="${p.archived ? "restore":"archive"}" data-id="${p.id}">${p.archived ? "恢复":"归档"}</button></div><small class="project-updated">${new Date(p.updated_at).toLocaleDateString("zh-CN")}</small></article>`).join("") : `<div class="empty-library">${query ? "没有找到匹配的作品，试试其他关键词。" : filter === "archived" ? "还没有归档作品。归档后仍可恢复。" : "还没有作品，从一支短片开始。"}</div>`;
 }
 
 async function refreshProjects() {
   state.projects = await api("/api/projects?include_archived=true"); renderRecent();
   renderMerchantReuse();
   if (!$("#library-view").hidden) renderLibrary();
+}
+
+async function openLibrary() {
+  if(!canLeave())return;
+  ++state.serial;
+  setPage("library");
+  try{await refreshProjects();}catch(error){toast(error.message,true);}
 }
 
 async function openProject(id) {
@@ -176,7 +183,7 @@ async function openProject(id) {
     const candidates=jobs.filter(j=>j.version===project.version);
     const matching=candidates.find(j=>["queued","rendering","cancelling"].includes(j.status)) || candidates.find(j=>j.status==="completed") || candidates[0];
     if (matching) { restoreExportSettings(matching); handleJob(matching); }
-  } catch (error) { toast(error.message, true);rememberRoute(currentRoute(),true); }
+  } catch (error) { if(serial===state.serial){toast(error.message, true);rememberRoute(currentRoute(),true);} }
 }
 
 function displayBoard() {
@@ -196,16 +203,17 @@ function displayBoard() {
   rememberRoute(`#project=${p.id}`);
 }
 
-function assetUrl(asset) { return `/api/projects/${state.current.id}/assets/${asset}.jpg`; }
+function assetUrl(asset) { return `/api/projects/${state.current.id}/assets/${asset}.jpg?max_size=480`; }
 function options(values, current) { return values.map(([key,label])=>`<option value="${key}" ${key===current ? "selected":""}>${label}</option>`).join(""); }
 function renderScenes() {
   const p = state.draft;
   $("#scenes").innerHTML = p.scenes.map((scene,i) => {
-    const source = scene.asset_id ? assetUrl(scene.asset_id) : i < state.current.scenes.length ? previewUrl(state.current,i) : "/favicon.svg";
+    const source = scene.asset_id ? assetUrl(scene.asset_id) : i < state.current.scenes.length ? previewUrl(state.current,i,160) : "/favicon.svg";
     return `<article class="scene-card ${i===state.scene ? "active":""}" data-index="${i}" data-asset-id="${esc(scene.asset_id || "")}">
       <div class="scene-card-head"><span class="scene-number">${String(i+1).padStart(2,"0")}</span><span>${p.cover_scene===i ? "★ 封面分镜" : "分镜画面"}</span><label>时长 <input type="number" min="2" max="20" step="1" value="${scene.duration}" data-field="duration" aria-label="分镜 ${i+1} 时长">秒</label></div>
       <div class="scene-content"><button class="scene-thumb" data-preview="${i}" aria-label="预览分镜 ${i+1}"><img src="${source}" alt="分镜 ${i+1}" loading="lazy"></button><div><label for="heading-${i}">画面标题</label><input id="heading-${i}" data-field="heading" maxlength="32" value="${esc(scene.heading)}" required><label for="caption-${i}">画面字幕</label><textarea id="caption-${i}" data-field="caption" maxlength="96" required>${esc(scene.caption)}</textarea><div class="scene-counter">${scene.caption.length} / 96</div></div></div>
       <div class="scene-photo"><label class="photo-upload">${icon("plus")} ${scene.asset_id ? "更换照片" : "上传照片"}<input type="file" accept="image/jpeg,image/png,image/webp" data-upload="${i}" aria-label="分镜 ${i+1} 照片"></label><button class="text-button" data-media="${i}">从照片库选择</button><button type="button" class="remove-photo" ${scene.asset_id ? "" : "hidden"}>移除照片</button><span class="photo-status">${scene.asset_id ? "使用门店照片" : "使用图形背景"}</span></div>
+      ${p.merchant || scene.photo_hint ? `<p class="shot-hint">拍摄建议：${esc(shotHint(scene,i))}</p>`:""}
       <details class="composition"><summary>画面构图 <small>裁切 · 文字 · 运动</small></summary><div class="composition-grid">
         <label>照片适配<select data-field="photo_fit" aria-label="照片适配">${options([["cover","铺满画面"],["contain","完整展示"]],scene.photo_fit)}</select></label>
         <label>文字位置<select data-field="text_position" aria-label="文字位置">${options([["bottom","下方"],["center","居中"],["top","上方"]],scene.text_position)}</select></label>
@@ -583,7 +591,7 @@ $("#variants-form").addEventListener("submit",async event=>{
     $("#variants-submit").disabled=true;$("#variants-submit").textContent="正在创建独立作品…";showError("#variants-error");
     const projects=await api(`/api/projects/${state.current.id}/variants`,{method:"POST",body:JSON.stringify(body)});
     $("#variants-form").hidden=true;$("#variants-results").hidden=false;
-    $("#variants-results").innerHTML='<p>已创建 '+projects.length+' 个独立作品。打开后检查构图，原草稿仍保留。</p>'+projects.map(project=>`<button class="variant-result" data-open-variant="${project.id}"><img src="${previewUrl(project,project.cover_scene||0)}" alt="${esc(project.aspect)} 画幅预览"><span><b>${esc(project.title)}</b><small>打开作品，检查构图与字幕 →</small></span></button>`).join("");
+    $("#variants-results").innerHTML='<p>已创建 '+projects.length+' 个独立作品。打开后检查构图，原草稿仍保留。</p>'+projects.map(project=>`<button class="variant-result" data-open-variant="${project.id}"><img src="${previewUrl(project,project.cover_scene||0,480)}" alt="${esc(project.aspect)} 画幅预览"><span><b>${esc(project.title)}</b><small>打开作品，检查构图与字幕 →</small></span></button>`).join("");
     await refreshProjects();
   } catch(error){showError("#variants-error",error.message);}
   finally {state.saving=false;$("#variants-submit").disabled=false;$("#variants-submit").textContent="创建选定画幅";}
@@ -678,8 +686,8 @@ $("#voice-preview").addEventListener("click",async()=>{
 $("#play-preview").addEventListener("click",togglePreview);
 $("#next-preview").addEventListener("click",()=>{if(state.current){stopPreview();showScene((state.scene+1)%state.draft.scenes.length);}});
 $("#new-project").addEventListener("click",newProject);$("#library-new").addEventListener("click",newProject);$("#back-brief").addEventListener("click",newProject);
-$("#nav-studio").addEventListener("click",()=>setPage("studio"));
-$("#nav-library").addEventListener("click",async()=>{setPage("library");try{await refreshProjects();}catch(error){toast(error.message,true);}});
+$("#nav-studio").addEventListener("click",()=>{if(canLeave()){++state.serial;setPage("studio");}});
+$("#nav-library").addEventListener("click",openLibrary);
 $("#project-search").addEventListener("input",renderLibrary);
 $("#step-idea").addEventListener("click",()=>{if(state.current)newProject();});
 $("#step-board").addEventListener("click",()=>{if(state.current){setStep(2);showScene(0);$("#storyboard-panel").scrollIntoView({behavior:"smooth",block:"start"});}});
@@ -811,6 +819,27 @@ function renderMerchantSummary() {
   $("#merchant-summary-name").textContent=merchant.store_name;
   $("#merchant-summary-detail").textContent=`${industry(merchant.industry)?.label || "门店宣传"} · ${merchant.product}`;
 }
+function shotHint(scene,index) {
+  const hints=industry(state.draft?.merchant?.industry)?.photos || [];
+  return scene.photo_hint || hints[Math.min(index,hints.length-1)] || "与这幕文案对应的真实产品、环境或服务照片";
+}
+$("#shooting-guide").addEventListener("click",()=>{
+  if(!state.draft)return;
+  const aspect=state.draft.aspect;
+  const orientation=aspect==="9:16" ? "手机竖着拍，适合竖屏短视频" : aspect==="16:9" ? "手机横着拍，适合横屏展示" : "主体放在中间，方便裁成正方形";
+  const scenes=state.draft.scenes;
+  $("#shooting-intro").textContent=`${state.draft.title} · ${aspect} · ${scenes.length} 幕。${orientation}。`;
+  $("#shooting-list").innerHTML=scenes.map((scene,index)=>`<li><div><b>${String(index+1).padStart(2,"0")} · ${esc(scene.heading)}</b><span>${scene.asset_id ? "已有照片，可替换":"待准备照片"}</span></div><p>${esc(shotHint(scene,index))}</p><small>对应字幕：${esc(scene.caption)}</small></li>`).join("");
+  state.shootingText=$("#shooting-intro").textContent+"\n\n"+scenes.map((scene,index)=>`${index+1}. ${scene.heading}\n拍摄：${shotHint(scene,index)}\n字幕：${scene.caption}\n照片：${scene.asset_id ? "已有，可替换":"待准备"}`).join("\n\n")+"\n\n"+$(".shooting-tips").innerText+"\n";
+  $("#shooting-dialog").showModal();
+});
+$("#shooting-close").addEventListener("click",()=>$("#shooting-dialog").close());
+$("#shooting-download").addEventListener("click",()=>{
+  if(!state.shootingText)return;
+  const url=URL.createObjectURL(new Blob(["\ufeff",state.shootingText],{type:"text/plain;charset=utf-8"}));
+  const link=document.createElement("a");link.href=url;link.download="frame-shooting-plan.txt";document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+});
 $("#industry-options").addEventListener("click",event=>{const button=event.target.closest("[data-industry]");if(button)selectIndustry(button.dataset.industry);});
 $("#merchant-scenario").addEventListener("change",updateScenario);
 $("#merchant-reuse").addEventListener("change",event=>{const project=state.projects.find(p=>p.id===event.target.value);if(project?.merchant){reuseMerchant(project.merchant,project.example);toast("门店资料已填入，可以调整产品和活动后生成新作品。");}});
