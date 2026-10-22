@@ -83,7 +83,7 @@ node --check web/app.js
 
 覆盖实际 MP4 完整解码、三种 1080p 画幅、选定封面像素一致性、移动背景上的稳定文字、真实编码音量比、声音与字幕时轴、排队与取消、版本冲突、草稿副本、素材隔离、多画幅失败回滚、作品包往返与无效文件拒绝。
 
-本地当前为 133 项 Python、21 项 JavaScript 测试通过。CI 包含 Linux Python 3.10/3.11/3.12 与 Windows Python 3.12。新增 Windows 验证发现默认编码导致中文元数据/字幕读取问题，已改为显式 UTF-8；8b823cf、c1fa4f6、3104a5f、8c57cf8 的 CI 均成功，后续提交结果以仓库 Actions 与 [持续开发记录](OVERNIGHT_PROGRESS.md) 为准。
+本地当前为 133 项 Python、21 项 JavaScript 测试通过。CI 包含 Linux Python 3.10/3.11/3.12 与 Windows Python 3.12。新增 Windows 验证发现默认编码导致中文元数据/字幕读取问题，已改为显式 UTF-8；8b823cf、c1fa4f6、3104a5f、8c57cf8、ecf5dd0、c967eaf 的 CI 均成功，后续提交结果以仓库 Actions 与 [持续开发记录](OVERNIGHT_PROGRESS.md) 为准。
 
 中文原生配音已通过本机实际导出与播放验收；自动化测试用可控音频验证时轴。DeepSeek 仅做模拟接口测试与官方协议核对，本次没有使用密钥或调用付费 API。Windows / Linux 可以输出字幕和音乐，macOS 婷婷配音为可选能力。
 
