@@ -107,7 +107,7 @@ def test_narrated_export_sync_materials_and_snapshot(studio, monkeypatch, music)
     monkeypatch.setattr(main, "narration_available", lambda: True)
     spoken = []
 
-    def fake_voice(text, destination, convert):
+    def fake_voice(text, destination, convert, **options):
         spoken.append(text)
         with wave.open(str(destination), "wb") as audio:
             audio.setnchannels(1)
@@ -157,7 +157,7 @@ def test_voice_failure_is_actionable(studio, monkeypatch):
     renderer = importlib.import_module("app.renderer")
     monkeypatch.setattr(main, "narration_available", lambda: True)
 
-    def fail(*args):
+    def fail(*args, **kwargs):
         raise NarrationError("关闭配音后重试")
 
     monkeypatch.setattr(renderer, "synthesize", fail)

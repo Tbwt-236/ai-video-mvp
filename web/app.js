@@ -71,11 +71,13 @@ function newProject() {
   clearTimeout(state.poll);
   stopPreview();
   state.current = null; state.draft = null; state.assets = []; state.job = null; state.dirty = false;
+  stopVoice();updateAudioControls();clearPreflight();
   clearTimeout(state.previewTimer); state.previewController?.abort(); state.previewRevision++;
   $("#history-panel").hidden = true;
   $("#brief-form").reset(); state.merchantExample = false; $("#merchant-example-note").hidden = true;
   selectIndustry(state.industry || "coffee");renderMerchantReuse();
   $("#narration").checked = Boolean(state.config?.narration_available);
+  updateAudioControls();
   setBriefKind(state.briefKind);
   $("#final-video").pause(); $("#final-video").removeAttribute("src");
   $("#final-video").hidden = true;
@@ -153,13 +155,14 @@ async function openProject(id) {
     if (serial !== state.serial) return;
     clearTimeout(state.poll); stopPreview();
     state.current = project; state.dirty = false; state.scene = 0; state.job = null;
+    stopVoice();
     displayBoard(); setPage("studio"); renderRecent();
     window.scrollTo({top:0, behavior:"smooth"});
     const [jobs, assets] = await Promise.all([api(`/api/projects/${id}/jobs`),api(`/api/projects/${id}/assets`)]);
     if (serial !== state.serial) return;
     state.assets = assets; renderHistory(jobs);
     const matching = jobs.find(j => j.version === project.version);
-    if (matching) { $("#music").checked = matching.music; $("#narration").checked = Boolean(matching.narration); handleJob(matching); }
+    if (matching) { restoreExportSettings(matching); handleJob(matching); }
   } catch (error) { toast(error.message, true); }
 }
 
@@ -174,7 +177,7 @@ function displayBoard() {
   $("#save-status").textContent = "已保存至本地";
   renderMerchantSummary();
   showError("#save-error"); showError("#export-error");
-  renderScenes(); updateBoardTotal(); showScene(0); setStep(2); resetExport(); findDraft();
+  renderScenes(); updateBoardTotal(); showScene(0); setStep(2); resetExport(); findDraft();updateAudioControls();clearPreflight();
 }
 
 function assetUrl(asset) { return `/api/projects/${state.current.id}/assets/${asset}.jpg`; }
@@ -255,8 +258,10 @@ function markDirty({record=true,force=false}={}) {
   state.dirty=JSON.stringify(state.draft)!==JSON.stringify(E.editable(state.current));
   if(record)rememberEdit(force);
   state.previewController?.abort();state.previewRevision++;
+  stopVoice();clearPreflight();
   stopPreview();clearTimeout(state.poll);state.job=null;
   if (!state.config?.narration_available) $("#narration").checked=false;
+  updateAudioControls();
   $("#save-status").textContent=state.dirty ? "已暂存草稿 · 待保存":"已保存至本地";
   $("#draft-banner").hidden=true;persistDraft();
   $("#download-actions").hidden=true;$("#export-video").hidden=false;$("#export-video").disabled=false;
@@ -324,7 +329,7 @@ function updateTime() {
 
 function showScene(index) {
   const p=state.draft;if(!p)return;
-  index=Math.max(0,Math.min(index,p.scenes.length-1));state.scene=index;
+  index=Math.max(0,Math.min(index,p.scenes.length-1));if(index!==state.scene)stopVoice();state.scene=index;
   $(".preview-transport").hidden=false;$("#timeline").hidden=false;
   $("#final-video").pause();$("#final-video").hidden=true;$("#sample-poster").hidden=true;$("#scene-preview").hidden=false;
   $("#scene-preview").alt=`分镜 ${index+1}：${p.scenes[index].heading}`;
@@ -362,6 +367,41 @@ function togglePreview() {
   state.playTimer = setTimeout(nextDuringPlayback,state.draft.scenes[state.scene].duration*1000);
 }
 
+function exportSettings() {
+  const narration=$("#narration").checked,music=$("#music").checked;
+  return {music,narration,quality:$("#quality").value,speech_rate:narration ? Number($("#speech-rate").value):210,music_volume:music ? Number($("#music-volume").value)/100:.5};
+}
+function settingsMatch(job) {
+  const expected=exportSettings();
+  return job.music===expected.music && Boolean(job.narration)===expected.narration && (job.quality || "720p")===expected.quality && (job.speech_rate || 210)===expected.speech_rate && (job.music_volume ?? .5)===expected.music_volume;
+}
+function restoreExportSettings(job) {
+  $("#music").checked=job.music;$("#narration").checked=Boolean(job.narration);$("#quality").value=job.quality || "720p";
+  const rate=String(job.speech_rate || 210);
+  if(![...$("#speech-rate").options].some(option=>option.value===rate))$("#speech-rate").add(new Option(`自定 · ${rate}`,rate));
+  $("#speech-rate").value=rate;$("#music-volume").value=Math.round((job.music_volume ?? .5)*100);updateAudioControls();
+}
+function updateAudioControls() {
+  $("#music-volume-row").hidden=!$("#music").checked;
+  $("#music-volume-value").textContent=`${$("#music-volume").value}%`;
+  $("#voice-settings").hidden=!$("#narration").checked;
+  $("#narration").disabled=!state.config?.narration_available && !$("#narration").checked;
+  $("#voice-preview").disabled=!state.current || !state.config?.narration_available || Boolean(state.voiceController);
+  $("#check-export").disabled=!state.current;
+}
+function stopVoice() {
+  state.voiceRevision=(state.voiceRevision || 0)+1;state.voiceController?.abort();state.voiceController=null;
+  $("#voice-audio").pause();$("#voice-audio").removeAttribute("src");$("#voice-audio").hidden=true;
+  if(state.voiceObject){URL.revokeObjectURL(state.voiceObject);state.voiceObject=null;}
+  $("#voice-preview").textContent="试听当前分镜";updateAudioControls();
+}
+function clearPreflight() {
+  $("#preflight-result").innerHTML="<p>保存作品后，可检查照片、文字时长和导出环境。</p>";
+}
+function showPreflight(result) {
+  $("#preflight-result").innerHTML=`<b>${result.ready ? "可以导出":"请先处理以下问题"}</b><p>${result.scenes} 幕 · ${result.photos} 张照片 · ${result.width} × ${result.height}</p>${result.blocking.length ? `<ul class="check-blocking">${result.blocking.map(item=>`<li>${esc(item)}</li>`).join("")}</ul>`:""}${result.warnings.length ? `<ul>${result.warnings.map(item=>`<li>${esc(item)}</li>`).join("")}</ul>`:"<p>照片和分镜时长检查通过。</p>"}`;
+  if(!result.ready)$("#preflight-panel").open=true;
+}
 function resetExport() {
   $("#download-actions").hidden = true; $("#job-progress").hidden = true;
   $("#export-video").hidden = false; $("#export-video").disabled = !state.current;
@@ -372,11 +412,12 @@ function resetExport() {
 function handleJob(job, historical=false) {
   if (state.current?.id !== job.project_id) return;
   state.job = job;
-  const current = job.version === state.current.version && !state.dirty && job.music === $("#music").checked && Boolean(job.narration) === $("#narration").checked;
+  const current = job.version === state.current.version && !state.dirty && settingsMatch(job);
   if (!current && !historical) { resetExport(); return; }
-  if (["queued","rendering"].includes(job.status)) {
+  if (["queued","rendering","cancelling"].includes(job.status)) {
     $("#job-progress").hidden = false; $("#download-actions").hidden = true;
     $("#job-message").textContent = job.message;
+    $("#cancel-export").disabled=job.status==="cancelling";$("#cancel-export").textContent=job.status==="cancelling" ? "正在取消…":"取消本次导出";
     $("#job-percent").textContent = `${job.progress}%`; $("#progress").value = job.progress;
     $("#export-video").hidden = false; $("#export-video").disabled = true;
     $("#export-video span").textContent = "正在合成视频…";
@@ -402,6 +443,9 @@ function handleJob(job, historical=false) {
     $("#preview-badge").textContent = historical && !current ? `历史版本 ${job.version}` : "成片就绪";
     $("#preview-hint").textContent = "使用播放器查看实际成片，支持全屏播放";
     showError("#export-error");
+  } else if(job.status==="cancelled") {
+    clearTimeout(state.poll);resetExport();showError("#export-error");
+    $("#export-note").textContent="本次导出已取消，作品和照片已保留。";refreshHistory();
   } else {
     resetExport(); showError("#export-error",job.error || "导出失败，请重试。");
     $("#export-video span").textContent = "重新导出视频";
@@ -468,17 +512,26 @@ document.addEventListener("click",event=> {
 });
 $("#save-board").addEventListener("click",async()=> { if(await saveBoard())toast("分镜已保存，预览已更新。"); });
 $("#export-video").addEventListener("click",async()=> {
-  if(!state.current)return;
+  if(!state.current || state.exporting)return;
+  state.exporting=true;
   $("#export-video").disabled=true; showError("#export-error");
   try {
     if(!(await saveBoard())) { $("#export-video").disabled=false; return; }
     const id=state.current.id;
+    const settings=exportSettings(),body={version:state.current.version,...settings};
     $("#export-video").disabled=true;
-    const job=await api(`/api/projects/${id}/render`,{method:"POST",body:JSON.stringify({version:state.current.version,music:$("#music").checked,narration:$("#narration").checked})});
+    const check=await api(`/api/projects/${id}/preflight`,{method:"POST",body:JSON.stringify(body)});
+    if(state.current?.id!==id)return;
+    showPreflight(check);
+    if(!check.ready)throw new Error(check.blocking.join(" "));
+    if(state.dirty || state.current.version!==body.version || JSON.stringify(exportSettings())!==JSON.stringify(settings))throw new Error("内容或导出设置已改变，请重新导出。");
+    const job=await api(`/api/projects/${id}/render`,{method:"POST",body:JSON.stringify(body)});
     if(state.current?.id===id)handleJob(job);
   } catch(error){showError("#export-error",error.message);$("#export-video").disabled=false;}
+  finally{state.exporting=false;}
 });
-for (const control of [$("#music"), $("#narration")]) control.addEventListener("change",async()=> {
+for (const control of [$("#music"), $("#narration"),$("#quality"),$("#speech-rate"),$("#music-volume")]) control.addEventListener("change",async()=> {
+  stopVoice();updateAudioControls();clearPreflight();
   clearTimeout(state.poll); state.job=null; resetExport();
   if(!state.current)return;
   showScene(state.scene);
@@ -486,11 +539,43 @@ for (const control of [$("#music"), $("#narration")]) control.addEventListener("
   try{
     const jobs=await api(`/api/projects/${id}/jobs`);
     if(state.current?.id!==id)return;
-    const matching=jobs.find(j=>j.version===state.current.version&&j.music===$("#music").checked&&Boolean(j.narration)===$("#narration").checked);
+    const matching=jobs.find(j=>j.version===state.current.version&&settingsMatch(j));
     if(matching)handleJob(matching);
   }catch(error){toast(error.message,true);}
 });
 $("#return-board-preview").addEventListener("click",()=>{showScene(0);setStep(2);});
+$("#music-volume").addEventListener("input",updateAudioControls);
+$("#check-export").addEventListener("click",async()=>{
+  if(!state.current)return;$("#check-export").disabled=true;
+  try{
+    if(!(await saveBoard()))return;
+    const id=state.current.id,body={version:state.current.version,...exportSettings()};
+    const result=await api(`/api/projects/${id}/preflight`,{method:"POST",body:JSON.stringify(body)});
+    if(state.current?.id===id)showPreflight(result);
+  }catch(error){showError("#export-error",error.message);}
+  finally{updateAudioControls();}
+});
+$("#cancel-export").addEventListener("click",async()=>{
+  if(!state.job)return;const id=state.job.id;$("#cancel-export").disabled=true;
+  try{const job=await api(`/api/jobs/${id}/cancel`,{method:"POST",body:"{}"});if(state.job?.id===id)handleJob(job);}
+  catch(error){showError("#export-error",error.message);$("#cancel-export").disabled=false;}
+});
+$("#voice-preview").addEventListener("click",async()=>{
+  if(!state.current || !state.config?.narration_available)return;
+  stopVoice();const revision=state.voiceRevision,text=state.draft.scenes[state.scene].caption;
+  if(!text.trim()){toast("请先填写当前分镜的字幕。",true);return;}
+  const controller=new AbortController();state.voiceController=controller;updateAudioControls();
+  $("#voice-preview").textContent="正在准备试听…";
+  const timeout=setTimeout(()=>controller.abort(),80000);
+  try{
+    const response=await fetch("/api/narration/preview",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,speech_rate:Number($("#speech-rate").value)}),signal:controller.signal});
+    if(!response.ok)throw new Error((await response.json()).detail || "试听失败，请重试。");
+    const blob=await response.blob();if(revision!==state.voiceRevision)return;
+    state.voiceObject=URL.createObjectURL(blob);$("#voice-audio").src=state.voiceObject;$("#voice-audio").hidden=false;
+    try{await $("#voice-audio").play();}catch{toast("试听已准备好，请点击播放器播放。");}
+  }catch(error){if(revision===state.voiceRevision)toast(error.name==="AbortError" ? "试听超时，请稍后重试。":error.message,true);}
+  finally{clearTimeout(timeout);if(revision===state.voiceRevision){state.voiceController=null;$("#voice-preview").textContent="重新试听当前分镜";updateAudioControls();}}
+});
 $("#play-preview").addEventListener("click",togglePreview);
 $("#next-preview").addEventListener("click",()=>{if(state.current){stopPreview();showScene((state.scene+1)%state.draft.scenes.length);}});
 $("#new-project").addEventListener("click",newProject);$("#library-new").addEventListener("click",newProject);$("#back-brief").addEventListener("click",newProject);
@@ -519,6 +604,7 @@ async function init(){
     $("#narration").disabled = !config.narration_available;
     $("#narration").checked = config.narration_available;
     $("#narration-note").textContent = config.narration_note + "。开启后自动延长过短镜头，最长 120 秒。";
+    updateAudioControls();
     $("#examples").innerHTML=config.examples.map((ex,i)=>`<button type="button" class="example-chip" data-example="${i}">${esc(ex.label)} ↗</button>`).join("");
     const ai=$("#generation-mode option[value=ai]");ai.disabled=!config.ai_available;ai.textContent=config.ai_available?"DeepSeek AI · 已连接":"DeepSeek AI · 尚未配置";
     if(health.status!=="ok")throw new Error("视频合成环境未就绪，请查看启动日志。");
@@ -706,7 +792,7 @@ $("#library-grid").addEventListener("click",async event=>{
 });
 function renderHistory(jobs) {
   $("#history-count").textContent=jobs.length;$("#history-panel").hidden=!jobs.length;
-  $("#history-list").innerHTML=jobs.slice(0,12).map(job=>`<div class="history-item"><div><b>版本 ${job.version} · ${Number(Number(job.duration || 0).toFixed(1))} 秒</b><small>${new Date(job.created_at).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} · ${job.narration ? "中文配音":"无配音"}${job.music ? " · 音乐":""}</small></div>${job.status==="completed" ? `<button data-history-job="${job.id}">查看</button>` : `<span>${esc(({failed:"失败",queued:"等待中",rendering:"合成中",cancelled:"已取消"})[job.status] || job.status)}</span>`}</div>`).join("");
+  $("#history-list").innerHTML=jobs.slice(0,12).map(job=>`<div class="history-item"><div><b>版本 ${job.version} · ${Number(Number(job.duration || 0).toFixed(1))} 秒</b><small>${new Date(job.created_at).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} · ${job.quality || "720p"} · ${job.narration ? "中文配音":"无配音"}${job.music ? " · 音乐":""}</small></div>${job.status==="completed" ? `<button data-history-job="${job.id}">查看</button>` : `<span>${esc(({failed:"失败",queued:"等待中",rendering:"合成中",cancelling:"取消中",cancelled:"已取消"})[job.status] || job.status)}</span>`}</div>`).join("");
 }
 async function refreshHistory(){
   if(!state.current)return;const id=state.current.id;

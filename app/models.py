@@ -108,6 +108,29 @@ class RenderRequest(BaseModel):
     version: int = Field(ge=1)
     music: bool = True
     narration: bool = False
+    quality: Literal["720p", "1080p"] = "720p"
+    speech_rate: int = Field(default=210, ge=140, le=280)
+    music_volume: float = Field(default=.5, ge=0, le=1, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def normalize_inactive_settings(self):
+        if not self.narration:
+            self.speech_rate = 210
+        if not self.music:
+            self.music_volume = .5
+        return self
+
+
+class VoicePreview(BaseModel):
+    text: str = Field(min_length=1, max_length=96)
+    speech_rate: int = Field(default=210, ge=140, le=280)
+
+    @field_validator("text")
+    @classmethod
+    def nonempty(cls, value):
+        if not value.strip():
+            raise ValueError("请先填写要试听的字幕")
+        return value.strip()
 
 
 class MerchantBrief(MerchantProfile):

@@ -6,6 +6,7 @@ import os
 import threading
 import shutil
 import zipfile
+import tempfile
 from urllib.parse import unquote
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -19,11 +20,13 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.concurrency import run_in_threadpool
 
-from .models import Brief, MerchantBrief, PreviewRequest, ProjectEdit, ProjectState, RenderRequest, VersionRequest
+from .models import Brief, MerchantBrief, PreviewRequest, ProjectEdit, ProjectState, RenderRequest, VersionRequest, VoicePreview
 from .assets import MAX_UPLOAD, list_photos, photo_path, save_photo
 from .merchant import catalog as merchant_catalog, merchant_storyboard
-from .narration import NarrationError, available as narration_available
-from .renderer import ROOT, font, render, scene_image
+from .narration import NarrationError, available as narration_available, synthesize
+from .renderer import ROOT, font, render, scene_image, run_ffmpeg
+from .process import RenderCancelled
+from .checks import export_check
 from .store import Store, now
 from .storyboard import EXAMPLES, generate_storyboard, offline_storyboard
 
@@ -35,6 +38,8 @@ def create_app(data_dir=None):
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="video-render")
     render_lock = threading.Lock()
     upload_lock = threading.Lock()
+    voice_lock = threading.Lock()
+    controls = {}
 
     @asynccontextmanager
     async def lifespan(app):
@@ -45,6 +50,8 @@ def create_app(data_dir=None):
                        "version": 1, "created_at": now(), "updated_at": now(), "example": True}
             store.save_project(project)
         yield
+        for event, _ in list(controls.values()):
+            event.set()
         executor.shutdown(wait=True)
 
     app = FastAPI(title="FRAME · AI Video MVP", lifespan=lifespan)
@@ -108,7 +115,7 @@ def create_app(data_dir=None):
     def config():
         return {"ai_available": bool(os.getenv("DEEPSEEK_API_KEY", "").strip()),
                 "examples": EXAMPLES, "merchant_catalog": merchant_catalog(),
-                "renderer": "门店照片短片 · H.264 MP4 · 720p · 24 fps",
+                "renderer": "门店照片短片 · H.264 MP4 · 720p / 1080p · 24 fps",
                 "narration_available": narration_available(),
                 "narration_note": "本机中文语音 · 朗读画面字幕" if narration_available() else "本机未提供中文配音，仍可导出照片、字幕与音乐"}
 
@@ -121,6 +128,22 @@ def create_app(data_dir=None):
             return {"status": "ok", "ffmpeg": version}
         except Exception:
             return JSONResponse({"status": "error", "detail": "字体或 FFmpeg 不可用，请重新安装依赖。"}, status_code=503)
+
+    @app.post("/api/narration/preview")
+    def voice_preview(request: VoicePreview):
+        if not narration_available():
+            raise HTTPException(400, "本机中文配音不可用，可关闭配音后继续制作。")
+        if not voice_lock.acquire(blocking=False):
+            raise HTTPException(429, "另一段试听正在准备，请稍后再试。")
+        try:
+            with tempfile.TemporaryDirectory(prefix="voice-preview-", dir=store.directory) as temporary:
+                path = Path(temporary) / "preview.wav"
+                synthesize(request.text, path, run_ffmpeg, rate=request.speech_rate)
+                return Response(path.read_bytes(), media_type="audio/wav")
+        except NarrationError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        finally:
+            voice_lock.release()
 
     @app.get("/api/projects")
     def projects(include_archived: bool = False):
@@ -247,23 +270,45 @@ def create_app(data_dir=None):
         return Response(json.dumps(get_project(pid), ensure_ascii=False, indent=2), media_type="application/json",
                         headers={"Content-Disposition": 'attachment; filename="storyboard.json"'})
 
-    def work(job):
+    def work(job, event):
+        def check_cancel():
+            if event.is_set():
+                raise RenderCancelled()
         def progress(value, message):
-            job.update(status="rendering", progress=value, message=message)
-            store.save_job(job)
+            with render_lock:
+                check_cancel()
+                job.update(status="rendering", progress=value, message=message)
+                store.save_job(job)
+        directory = store.directory / "exports" / job["id"]
         try:
             progress(3, "准备画面与中文排版")
-            directory = store.directory / "exports" / job["id"]
             metadata = render(job["snapshot"], directory, job["music"], progress,
-                              store.directory / "assets" / job["project_id"], job.get("narration", False))
+                              store.directory / "assets" / job["project_id"], job.get("narration", False),
+                              job["quality"],job["speech_rate"],job["music_volume"],check_cancel)
             job.update(status="completed", progress=100, message="成片已就绪", completed_at=now(),
                        bytes=(directory/"video.mp4").stat().st_size, **metadata)
+        except RenderCancelled:
+            job.update(status="cancelled", message="导出已取消，作品和照片仍然保留")
         except NarrationError as exc:
             job.update(status="failed", error=str(exc))
         except Exception:
             log.exception("Video export failed: %s", job["id"])
             job.update(status="failed", error="视频合成失败，请重试。若持续失败，请检查磁盘空间与运行日志。")
-        store.save_job(job)
+        finally:
+            with render_lock:
+                if event.is_set():
+                    job.update(status="cancelled", message="导出已取消，作品和照片仍然保留")
+                if job["status"] in ("cancelled", "failed"):
+                    shutil.rmtree(directory, ignore_errors=True)
+                store.save_job(job)
+                controls.pop(job["id"], None)
+
+    @app.post("/api/projects/{pid}/preflight")
+    def preflight(pid: str, request: RenderRequest):
+        project = get_project(pid)
+        if project["version"] != request.version:
+            raise HTTPException(409, "作品已更新，请保存或重新打开后检查。")
+        return export_check(project, store.directory, request, narration_available())
 
     @app.post("/api/projects/{pid}/render")
     def export_video(pid: str, request: RenderRequest):
@@ -273,24 +318,54 @@ def create_app(data_dir=None):
                 raise HTTPException(409, "项目已更新，请保存并刷新分镜后重试。")
             if request.narration and not narration_available():
                 raise HTTPException(400, "此设备未提供本机中文配音，请关闭配音后导出。macOS 可在系统设置中安装婷婷语音。")
+            checks = export_check(project, store.directory, request, narration_available())
+            if not checks["ready"]:
+                raise HTTPException(400, " ".join(checks["blocking"]))
             jobs = store.jobs()
             for job in jobs:
                 if (job["project_id"] == pid and job["version"] == request.version and job["music"] == request.music
                         and job.get("narration", False) == request.narration
+                        and job.get("quality", "720p") == request.quality
+                        and job.get("speech_rate", 210) == request.speech_rate
+                        and job.get("music_volume", .5) == request.music_volume
                         and job["status"] in ("queued", "rendering", "completed")):
                     if job["status"] == "completed" and not (store.directory / "exports" / job["id"] / "video.mp4").is_file():
                         job.update(status="failed", error="成片文件已丢失，请重新导出。")
                         store.save_job(job)
                         continue
                     return public_job(job)
-            if sum(j["status"] in ("queued", "rendering") for j in jobs) >= 3:
+            if sum(j["status"] in ("queued", "rendering", "cancelling") for j in jobs) >= 3:
                 raise HTTPException(429, "导出队列已满，请等待当前任务完成。")
             job = {"id": str(uuid4()), "project_id": pid, "version": project["version"],
                    "status": "queued", "progress": 0, "message": "等待渲染", "created_at": now(),
                    "music": request.music, "narration": request.narration, "materials": True, "snapshot": project, "title": project["title"],
+                   "quality":request.quality,"speech_rate":request.speech_rate,"music_volume":request.music_volume,
                    "duration": project["duration"], "aspect": project["aspect"]}
             store.save_job(job)
-            executor.submit(work, job.copy())
+            event = threading.Event()
+            future = executor.submit(work, job.copy(), event)
+            controls[job["id"]] = (event, future)
+            return public_job(job)
+
+    @app.post("/api/jobs/{jid}/cancel")
+    def cancel_job(jid: str):
+        with render_lock:
+            job = get_job(jid)
+            if job["status"] in ("completed", "failed"):
+                raise HTTPException(409, "任务已经结束，无需取消。")
+            if job["status"] == "cancelled":
+                return public_job(job)
+            control = controls.get(jid)
+            if control is None:
+                raise HTTPException(409, "任务已中断，请重新打开作品。")
+            event, future = control
+            event.set()
+            if future.cancel():
+                job.update(status="cancelled", message="导出已取消，作品和照片仍然保留")
+                controls.pop(jid, None)
+            else:
+                job.update(status="cancelling", message="正在取消并清理临时文件…")
+            store.save_job(job)
             return public_job(job)
 
     @app.get("/api/projects/{pid}/jobs")

@@ -59,6 +59,6 @@ class Store:
 
     def recover_jobs(self):
         for job in self.jobs():
-            if job["status"] in ("queued", "rendering"):
+            if job["status"] in ("queued", "rendering", "cancelling"):
                 job.update(status="failed", error="服务已重启，上次导出中断。请重新导出。")
                 self.save_job(job)

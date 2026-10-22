@@ -14,6 +14,7 @@ import imageio_ffmpeg
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .narration import NarrationError, synthesize
+from .process import run_process
 
 ROOT = Path(__file__).resolve().parents[1]
 SIZES = {"9:16": (720, 1280), "16:9": (1280, 720), "1:1": (720, 720)}
@@ -166,9 +167,9 @@ def make_music(path, duration):
             out.writeframes(buffer)
 
 
-def run_ffmpeg(args, timeout=120):
-    result = subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y", *args],
-                            capture_output=True, timeout=timeout)
+def run_ffmpeg(args, timeout=120, cancel=None):
+    result = run_process([imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y", *args],
+                         timeout=timeout, cancel=cancel)
     if result.returncode:
         raise RuntimeError("FFmpeg 合成失败: " + result.stderr.decode(errors="replace")[-1200:])
 
@@ -189,23 +190,29 @@ def srt(project, narrated=False):
     return "\n".join(chunks)
 
 
-def render(project, directory, music, progress, asset_dir=None, narration=False):
+def render(project, directory, music, progress, asset_dir=None, narration=False, quality="720p", speech_rate=210, music_volume=.5, cancel=None):
     project = copy.deepcopy(project)
     directory.mkdir(parents=True, exist_ok=True)
     scratch = directory / "tmp"
     scratch.mkdir(exist_ok=True)
     w, h = SIZES[project["aspect"]]
+    if quality == "1080p":
+        w, h = w*3//2, h*3//2
+    def convert(args, timeout=120):
+        return run_ffmpeg(args, timeout=timeout, cancel=cancel)
     try:
         if narration:
             for i, scene in enumerate(project["scenes"]):
                 progress(4 + i, f"正在朗读字幕 {i+1} / {len(project['scenes'])}")
-                spoken = synthesize(scene["caption"], scratch/f"voice-{i}.wav", run_ffmpeg)
+                spoken = synthesize(scene["caption"], scratch/f"voice-{i}.wav", convert, rate=speech_rate, cancel=cancel)
                 scene["speech_duration"] = spoken
                 scene["duration"] = max(scene["duration"], math.ceil((spoken+.6)*FPS)/FPS)
             if sum(s["duration"] for s in project["scenes"]) > 120:
                 raise NarrationError("配音后超过 120 秒，请精简字幕后重试。")
         for i, scene in enumerate(project["scenes"]):
-            scene_image(project, i, asset_dir=asset_dir).save(scratch / f"scene-{i}.png")
+            if cancel:
+                cancel()
+            scene_image(project, i, size=(w,h), asset_dir=asset_dir).save(scratch / f"scene-{i}.png")
             if i == min(project.get("cover_scene", 0), len(project["scenes"])-1):
                 shutil.copyfile(scratch / f"scene-{i}.png", directory / "cover.png")
             frames = round(scene["duration"] * FPS)
@@ -220,7 +227,7 @@ def render(project, directory, music, progress, asset_dir=None, narration=False)
             filters = (f"scale={w*2}:{h*2},zoompan=z='{zoom}':"
                        f"x='{horizontal}':y='ih/2-ih/zoom/2':d={frames}:s={w}x{h}:fps={FPS},"
                        f"fade=t=in:d=0.25,fade=t=out:st={scene['duration']-.25}:d=0.25,format=yuv420p")
-            run_ffmpeg(["-i", str(scratch/f"scene-{i}.png"), "-vf", filters,
+            convert(["-i", str(scratch/f"scene-{i}.png"), "-vf", filters,
                         "-frames:v", str(frames), "-an", "-c:v", "libx264", "-preset", "veryfast",
                         "-crf", "21", "-threads", "2", str(scratch/f"clip-{i}.mp4")])
             progress(int(8 + (i+1)/len(project["scenes"])*77), f"已合成分镜 {i+1} / {len(project['scenes'])}")
@@ -230,33 +237,36 @@ def render(project, directory, music, progress, asset_dir=None, narration=False)
         if narration:
             progress(87, "正在对齐中文配音与字幕")
             for i, scene in enumerate(project["scenes"]):
-                run_ffmpeg(["-i", str(scratch/f"voice-{i}.wav"), "-af", "adelay=300:all=1,apad",
+                convert(["-i", str(scratch/f"voice-{i}.wav"), "-af", "adelay=300:all=1,apad",
                             "-t", str(scene["duration"]), str(scratch/f"padded-{i}.wav")])
             (scratch/"voices.txt").write_text("\n".join(f"file 'padded-{i}.wav'" for i in range(len(project["scenes"]))), encoding="utf-8")
-            run_ffmpeg(["-f", "concat", "-safe", "0", "-i", str(scratch/"voices.txt"), "-c:a", "pcm_s16le", str(scratch/"voice.wav")])
+            convert(["-f", "concat", "-safe", "0", "-i", str(scratch/"voices.txt"), "-c:a", "pcm_s16le", str(scratch/"voice.wav")])
             args += ["-i", str(scratch/"voice.wav")]
         if music:
             progress(88, "正在合成氛围音轨")
             make_music(scratch/"music.wav", duration)
             args += ["-i", str(scratch/"music.wav")]
         if narration and music:
-            args += ["-filter_complex", "[2:a]volume=0.20[bed];[1:a][bed]amix=inputs=2:duration=first:normalize=0[audio]",
+            args += ["-filter_complex", f"[2:a]volume={music_volume*.25}[bed];[1:a][bed]amix=inputs=2:duration=first:normalize=0[audio]",
                      "-map", "0:v:0", "-map", "[audio]"]
         elif narration or music:
             args += ["-map", "0:v:0", "-map", "1:a:0"]
+            if music:
+                args += ["-af", f"volume={music_volume}"]
         if narration or music:
             args += ["-c:a", "aac", "-b:a", "128k"]
         args += ["-c:v", "copy", "-t", str(duration), "-movflags", "+faststart", str(directory/"video.part.mp4")]
-        run_ffmpeg(args)
+        convert(args)
         (directory/"video.part.mp4").replace(directory/"video.mp4")
         (directory/"subtitles.srt").write_text(srt(project, narrated=narration), encoding="utf-8")
         project["duration"] = duration
         project["narration"] = narration
+        project["export_settings"] = {"quality":quality,"speech_rate":speech_rate,"music_volume":music_volume,"music":music,"narration":narration}
         (directory/"storyboard.json").write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8")
         copy_text = project["title"] + "\n\n" + "\n".join(s["caption"] for s in project["scenes"])
         if project.get("example"):
             copy_text = "【虚构演示，请替换门店信息后再发布】\n" + copy_text
         (directory/"post.txt").write_text(copy_text, encoding="utf-8")
-        return {"duration": round(duration, 3)}
+        return {"duration": round(duration, 3), "width":w, "height":h}
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
