@@ -8,6 +8,8 @@ const E = window.FrameEditor;
 const state = {projects: [], current: null, style: "cinema", aspect: "9:16", scene: 0,
   dirty: false, playing: false, job: null, poll: null, playTimer: null, saving: false, serial: 0, config: null, briefKind: "merchant", merchantExample: false, uploading: 0, draft:null, assets:[], history:[], future:[], pendingDraft:null, previewRevision:0, previewController:null, previewObject:null, previewTimer:null, mediaTarget:0, lastEditAt:0, lastEditKey:""};
 let toastTimer;
+let draftStore;
+function drafts() { return draftStore ||= window.FrameDrafts.create(localStorage,sessionStorage); }
 
 function toast(message, error = false) {
   clearTimeout(toastTimer);
@@ -77,6 +79,7 @@ function canLeave() {
 function newProject() {
   if (!canLeave()) return;
   state.serial++;
+  setProjectLoading(false);
   clearTimeout(state.poll);
   stopPreview();
   state.current = null; state.draft = null; state.assets = []; state.job = null; state.dirty = false;
@@ -161,6 +164,7 @@ async function refreshProjects() {
 async function openLibrary() {
   if(!canLeave())return;
   ++state.serial;
+  setProjectLoading(false);
   setPage("library");
   try{await refreshProjects();}catch(error){toast(error.message,true);}
 }
@@ -168,6 +172,7 @@ async function openLibrary() {
 async function openProject(id) {
   if (!canLeave()) return;
   const serial = ++state.serial;
+  setProjectLoading(true);
   try {
     const project = await api(`/api/projects/${id}`);
     if (serial !== state.serial) return;
@@ -184,6 +189,15 @@ async function openProject(id) {
     const matching=candidates.find(j=>["queued","rendering","cancelling"].includes(j.status)) || candidates.find(j=>j.status==="completed") || candidates[0];
     if (matching) { restoreExportSettings(matching); handleJob(matching); }
   } catch (error) { if(serial===state.serial){toast(error.message, true);rememberRoute(currentRoute(),true);} }
+  finally {if(serial===state.serial)setProjectLoading(false);}
+}
+
+function setProjectLoading(loading) {
+  state.opening=loading;
+  for(const selector of ["#storyboard-panel","#brief-panel",".preview-column"]){
+    $(selector).inert=loading;$(selector).setAttribute("aria-busy",String(loading));
+  }
+  $("#save-status").textContent=loading ? "正在打开作品…" : state.dirty ? "已暂存草稿 · 待保存":"已保存至本地";
 }
 
 function displayBoard() {
@@ -249,23 +263,36 @@ function updateBoardTotal() {
   catch (error) { showError("#save-error",error.message); }
 }
 function persistDraft() {
-  if (!state.current || !state.draft) return;
+  if (!state.current || !state.draft) return false;
   try {
-    if (state.dirty) localStorage.setItem(`frame-draft:${state.current.id}`,JSON.stringify({baseVersion:state.current.version,edit:state.draft,updatedAt:Date.now()}));
-    else localStorage.removeItem(`frame-draft:${state.current.id}`);
-  } catch { $("#save-status").textContent = "草稿空间不足，请保存分镜"; }
+    if (state.dirty) drafts().write(state.current.id,state.current.version,state.draft);
+    else drafts().clearOwn(state.current.id);
+    return true;
+  } catch { $("#save-status").textContent = "浏览器暂存不可用或空间不足，请保存分镜";return false; }
 }
 function findDraft() {
-  state.pendingDraft = null; $("#draft-banner").hidden = true;
+  state.pendingDraft = null;state.pendingDrafts=[];$("#draft-banner").hidden = true;
   try {
-    const cached = JSON.parse(localStorage.getItem(`frame-draft:${state.current.id}`) || "null");
-    if (cached?.edit?.scenes?.length && cached.edit.scenes.length<=8) {
-      cached.edit=E.editable({...cached.edit,merchant:cached.edit.merchant===undefined ? state.current.merchant : cached.edit.merchant});
-      if(JSON.stringify(cached.edit)===JSON.stringify(state.draft))return;
-      state.pendingDraft = cached; $("#draft-banner").hidden = false;
-      $("#draft-message").textContent = cached.baseVersion === state.current.version ? "发现未保存的本机草稿。" : "发现旧版本草稿；恢复后请核对最新内容再保存。";
+    for(const cached of drafts().list(state.current.id)){
+      try{
+        cached.edit=E.editable({...cached.edit,merchant:cached.edit.merchant===undefined ? state.current.merchant : cached.edit.merchant});
+        if(JSON.stringify(cached.edit)!==JSON.stringify(state.draft))state.pendingDrafts.push(cached);
+      }catch{ /* Preserve other valid drafts when one old record cannot be read. */ }
     }
+    if(!state.pendingDrafts.length)return;
+    $("#draft-choice").innerHTML=state.pendingDrafts.map((cached,index)=>`<option value="${index}">草稿 ${index+1} · ${esc(new Date(cached.updatedAt).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"}))} · 版本 ${cached.baseVersion}</option>`).join("");
+    $("#draft-choice").hidden=state.pendingDrafts.length<2;selectDraft(0);
+    $("#draft-banner").hidden=false;
   } catch { /* A damaged local draft does not prevent opening the saved project. */ }
+}
+function selectDraft(index) {
+  state.pendingDraft=state.pendingDrafts[index];if(!state.pendingDraft)return;
+  const count=state.pendingDrafts.length;
+  $("#draft-message").textContent=(count>1 ? `发现 ${count} 份未保存草稿，可选择恢复。` : "发现未保存的本机草稿。")+
+    (state.pendingDraft.baseVersion!==state.current.version ? " 所选草稿基于旧版本，恢复后请核对最新内容再保存。":"");
+  const edit=state.pendingDraft.edit,changed=edit.scenes.map((scene,index)=>JSON.stringify(scene)!==JSON.stringify(state.draft.scenes[index]) ? index:-1).filter(index=>index>=0);
+  const snippet=changed.length ? edit.scenes[changed[0]]:edit.scenes[0];
+  $("#draft-summary").textContent=`${edit.title} · ${edit.aspect} · ${edit.scenes.length} 幕。${changed.length ? "有变化：第 "+changed.map(index=>index+1).join("、")+" 幕。":""}片段：${snippet.heading} — ${snippet.caption.slice(0,42)}${snippet.caption.length>42 ? "…":""}`;
 }
 function historyButtons() { $("#undo-edit").disabled = state.history.length<2; $("#redo-edit").disabled = !state.future.length; }
 function resetHistory() { state.history=[E.clone(state.draft)]; state.future=[]; state.lastEditAt=0; historyButtons(); }
@@ -324,6 +351,7 @@ async function refreshDraftPreview(index) {
 }
 
 async function saveBoard() {
+  if(state.opening)return false;
   if (state.uploading) { showError("#save-error", "请等待照片上传完成后保存。"); return false; }
   if (!state.current || !state.dirty) return true;
   if (state.saving) return false;
@@ -686,7 +714,7 @@ $("#voice-preview").addEventListener("click",async()=>{
 $("#play-preview").addEventListener("click",togglePreview);
 $("#next-preview").addEventListener("click",()=>{if(state.current){stopPreview();showScene((state.scene+1)%state.draft.scenes.length);}});
 $("#new-project").addEventListener("click",newProject);$("#library-new").addEventListener("click",newProject);$("#back-brief").addEventListener("click",newProject);
-$("#nav-studio").addEventListener("click",()=>{if(canLeave()){++state.serial;setPage("studio");}});
+$("#nav-studio").addEventListener("click",()=>{if(canLeave()){++state.serial;setProjectLoading(false);setPage("studio");}});
 $("#nav-library").addEventListener("click",openLibrary);
 $("#project-search").addEventListener("input",renderLibrary);
 $("#step-idea").addEventListener("click",()=>{if(state.current)newProject();});
@@ -926,8 +954,20 @@ $("#add-scene").addEventListener("click",()=>{
 function undoDraft(){if(state.history.length<2 || state.uploading || state.saving)return;state.future.push(state.history.pop());applyDraft(state.history[state.history.length-1],false);}
 function redoDraft(){if(!state.future.length || state.uploading || state.saving)return;const edit=state.future.pop();state.history.push(E.clone(edit));applyDraft(edit,false);}
 $("#undo-edit").addEventListener("click",undoDraft);$("#redo-edit").addEventListener("click",redoDraft);
-$("#restore-draft").addEventListener("click",()=>{if(state.pendingDraft){applyDraft(state.pendingDraft.edit);state.pendingDraft=null;toast("草稿已恢复，请检查后保存。");}});
-$("#discard-draft").addEventListener("click",()=>{state.pendingDraft=null;$("#draft-banner").hidden=true;persistDraft();});
+$("#draft-choice").addEventListener("change",event=>selectDraft(Number(event.target.value)));
+$("#restore-draft").addEventListener("click",()=>{
+  const cached=state.pendingDraft;if(!cached)return;
+  applyDraft(cached.edit);
+  if(persistDraft())try{drafts().remove(cached);}catch{ /* The source remains recoverable if removal fails. */ }
+  state.pendingDraft=null;toast("草稿已恢复，请检查后保存。");
+});
+$("#discard-draft").addEventListener("click",()=>{
+  if(!state.pendingDraft)return;
+  try{
+    if(!drafts().remove(state.pendingDraft))toast("这份草稿刚被其他窗口更新，已刷新列表。",true);
+    findDraft();
+  }catch{toast("暂时无法读取本机草稿，请重试。",true);}
+});
 document.addEventListener("keydown",event=>{
   if(!(event.metaKey || event.ctrlKey) || !state.current || $("#storyboard-panel").hidden)return;
   if(event.key.toLowerCase()==="s"){event.preventDefault();saveBoard().then(ok=>{if(ok)toast("分镜已保存。");});}

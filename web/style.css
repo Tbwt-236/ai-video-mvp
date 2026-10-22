@@ -2631,6 +2631,8 @@ dialog li p {
 .brand-controls input[type=color] { width:42px; height:30px; border:1px solid #43513a; padding:2px; border-radius:6px; background:transparent; }
 .brand-controls input[type=checkbox] { accent-color:#c2d69b; }
 .draft-banner { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0; padding:13px; border:1px solid #657447; background:#303923; border-radius:8px; color:#e3edc6; font-size:12px; }
+#draft-choice { width:100%;min-width:0;font-size:12px; }
+#draft-summary { flex-basis:100%;line-height:1.7;color:#c2d4a6;overflow-wrap:anywhere; }
 .text-button { border:0; padding:0; background:none; color:#c7dc9c; cursor:pointer; font-size:12px; }
 .composition { margin-top:15px; border-top:1px solid #354037; padding-top:12px; }
 .composition summary { cursor:pointer; color:#c4cfb9; font-size:12px; }

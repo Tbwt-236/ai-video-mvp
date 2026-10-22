@@ -48,7 +48,7 @@
 | 照片素材 | JPG / PNG / WebP，单张 ≤8 MB、≤2000 万像素，每作品最多 40 张；批量上传、照片库复用 |
 | 拍摄引导 | 每幕建议拍什么，按画幅提示横拍或竖拍；可下载含字幕和素材状态的拍摄清单 |
 | 构图与品牌 | 取景、放大、完整展示、5 种背景运动、3 种文字位置、品牌色、门店角标、自选封面 |
-| 草稿保护 | 自动暂存、刷新恢复、40 步撤销重做、版本冲突后的草稿另存 |
+| 草稿保护 | 按窗口独立暂存、多份草稿选择恢复、40 步撤销重做、版本冲突后的草稿另存 |
 | 作品管理 | 搜索、复制、归档恢复、复用门店资料、一键创建多画幅独立副本 |
 | 音乐 | 温暖氛围、柔和琴音、清亮节奏；8 秒试听、音量调节，配音时降低音乐音量 |
 | 导出 | 720p / 1080p，H.264 / 24 fps / AAC；跨作品任务进度、排队位置、取消、历史成片 |
@@ -99,11 +99,11 @@
 ~~~bash
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pytest -q
-node --test tests/editor.test.cjs tests/http.test.cjs
+node --test tests/editor.test.cjs tests/http.test.cjs tests/drafts.test.cjs
 node --check web/app.js
 ~~~
 
-当前本地 **115 项 Python、12 项 JavaScript 测试通过**。CI 配置覆盖 Linux Python 3.10/3.11/3.12 和 Windows Python 3.12，实时结果见仓库 Actions。测试包括真实视频解码、1080p 三种画幅、稳定文字、实际音量比、配音/SRT 时轴、取消任务、快照隔离、草稿副本、多画幅回滚、作品包校验、损坏照片检测与断线提示。原生语音和页面操作另通过本机浏览器验证，详见 [验收说明](docs/ACCEPTANCE.md)。
+当前本地 **115 项 Python、19 项 JavaScript 测试通过**。CI 配置覆盖 Linux Python 3.10/3.11/3.12 和 Windows Python 3.12，实时结果见仓库 Actions。测试包括真实视频解码、1080p 三种画幅、稳定文字、实际音量比、配音/SRT 时轴、取消任务、快照隔离、草稿副本、多画幅回滚、作品包校验、损坏照片检测与断线提示。原生语音和页面操作另通过本机浏览器验证，详见 [验收说明](docs/ACCEPTANCE.md)。
 
 制作可分发 ZIP：运行 **python scripts/build_release.py**。文件生成在项目目录的上一级，含源码、字体、说明、测试和演示作品；采用明确的文件白名单，排除 data、.env、.venv 和 Git 数据。ZIP 内的 RELEASE-MANIFEST.json 记录逐文件 SHA-256，旁边的 .sha256 文件校验完整 ZIP。重新打包自己生成的旧包时加 **--overwrite**。首次运行该包仍需要 Python 和联网安装依赖。
 

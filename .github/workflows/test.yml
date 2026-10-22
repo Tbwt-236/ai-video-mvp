@@ -12,7 +12,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: node --test tests/editor.test.cjs tests/http.test.cjs
+      - run: node --test tests/editor.test.cjs tests/http.test.cjs tests/drafts.test.cjs
       - run: node --check web/app.js
   test:
     runs-on: ${{ matrix.os }}
