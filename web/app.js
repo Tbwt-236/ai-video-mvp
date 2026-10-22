@@ -74,6 +74,7 @@ function newProject() {
   clearTimeout(state.previewTimer); state.previewController?.abort(); state.previewRevision++;
   $("#history-panel").hidden = true;
   $("#brief-form").reset(); state.merchantExample = false; $("#merchant-example-note").hidden = true;
+  selectIndustry(state.industry || "coffee");renderMerchantReuse();
   $("#narration").checked = Boolean(state.config?.narration_available);
   setBriefKind(state.briefKind);
   $("#final-video").pause(); $("#final-video").removeAttribute("src");
@@ -140,6 +141,7 @@ function renderLibrary() {
 
 async function refreshProjects() {
   state.projects = await api("/api/projects?include_archived=true"); renderRecent();
+  renderMerchantReuse();
   if (!$("#library-view").hidden) renderLibrary();
 }
 
@@ -170,6 +172,7 @@ function displayBoard() {
   $("#project-title").value = p.title; $("#board-style").value = p.style; $("#board-aspect").value = p.aspect;
   $("#board-source").textContent = p.source === "merchant_template" ? (p.example ? "◈ 虚构门店示例" : "◈ 门店信息模板") : p.source === "deepseek" ? "✳ DeepSeek AI 分镜" : "◈ 本地模板 · 可自由编辑";
   $("#save-status").textContent = "已保存至本地";
+  renderMerchantSummary();
   showError("#save-error"); showError("#export-error");
   renderScenes(); updateBoardTotal(); showScene(0); setStep(2); resetExport(); findDraft();
 }
@@ -207,7 +210,8 @@ function collectEdit() {
     return item;
   });
   return {title:$("#project-title").value.trim(),style:$("#board-style").value,aspect:$("#board-aspect").value,scenes,
-    cover_scene:state.draft.cover_scene,accent_color:$("#custom-color").checked ? $("#accent-color").value : null};
+    cover_scene:state.draft.cover_scene,accent_color:$("#custom-color").checked ? $("#accent-color").value : null,
+    merchant:state.draft.merchant};
 }
 function readEdit() { return {...E.validate(collectEdit()), version:state.current.version}; }
 function updateBoardTotal() {
@@ -226,7 +230,9 @@ function findDraft() {
   state.pendingDraft = null; $("#draft-banner").hidden = true;
   try {
     const cached = JSON.parse(localStorage.getItem(`frame-draft:${state.current.id}`) || "null");
-    if (cached?.edit?.scenes?.length && JSON.stringify(cached.edit)!==JSON.stringify(state.draft)) {
+    if (cached?.edit?.scenes?.length && cached.edit.scenes.length<=8) {
+      cached.edit=E.editable({...cached.edit,merchant:cached.edit.merchant===undefined ? state.current.merchant : cached.edit.merchant});
+      if(JSON.stringify(cached.edit)===JSON.stringify(state.draft))return;
       state.pendingDraft = cached; $("#draft-banner").hidden = false;
       $("#draft-message").textContent = cached.baseVersion === state.current.version ? "发现未保存的本机草稿。" : "发现旧版本草稿；恢复后请核对最新内容再保存。";
     }
@@ -264,7 +270,7 @@ function applyDraft(edit, record=true) {
   state.draft=E.clone(edit);
   $("#project-title").value=edit.title;$("#board-style").value=edit.style;$("#board-aspect").value=edit.aspect;
   $("#custom-color").checked=Boolean(edit.accent_color);$("#accent-color").value=edit.accent_color || "#c2d69b";
-  state.scene=Math.min(state.scene,edit.scenes.length-1);renderScenes();markDirty({record,force:true});historyButtons();
+  state.scene=Math.min(state.scene,edit.scenes.length-1);renderScenes();renderMerchantSummary();markDirty({record,force:true});historyButtons();
 }
 async function refreshDraftPreview(index) {
   const revision=++state.previewRevision, id=state.current.id;
@@ -425,7 +431,8 @@ $("#brief-form").addEventListener("submit",async event=> {
   showError("#form-error");
   try {
     const settings = {style:state.style, aspect:state.aspect, duration:Number($("#duration").value)};
-    const merchant = Object.fromEntries(["store_name", "product", "selling_point", "offer", "address", "cta"].map(key => [key, $(`#merchant-${key.replaceAll("_", "-")}`).value.trim()]));
+    const merchant = {...readMerchantFields("merchant"),industry:state.industry || "coffee",scenario:$("#merchant-scenario").value || "visit"};
+    if(state.briefKind==="merchant")E.validateMerchant(merchant);
     const body = state.briefKind === "merchant" ? {...settings, ...merchant, example:state.merchantExample} : {...settings, prompt, mode:$("#generation-mode").value};
     const project = await api(state.briefKind === "merchant" ? "/api/merchant-projects" : "/api/projects", {method:"POST",body:JSON.stringify(body)});
     await refreshProjects();
@@ -508,6 +515,7 @@ async function init(){
   try{
     const [config,,health]=await Promise.all([api("/api/config"),refreshProjects(),api("/api/health")]);
     state.config=config;
+    setupMerchantCatalog();
     $("#narration").disabled = !config.narration_available;
     $("#narration").checked = config.narration_available;
     $("#narration-note").textContent = config.narration_note + "。开启后自动延长过短镜头，最长 120 秒。";
@@ -520,7 +528,7 @@ function setBriefKind(kind) {
   state.briefKind = kind;
   $("#merchant-fields").hidden = kind !== "merchant";
   $("#creative-fields").hidden = kind !== "creative";
-  $$("#merchant-fields input").forEach(el => el.disabled = kind !== "merchant");
+  $$("#merchant-fields input, #merchant-fields select, #merchant-fields button").forEach(el => el.disabled = kind !== "merchant");
   $("#prompt").disabled = kind !== "creative"; $("#prompt").required = kind === "creative";
   $(".generation-mode").hidden = kind !== "creative";
   $$("[data-brief]").forEach(el => { el.classList.toggle("selected", el.dataset.brief === kind); el.setAttribute("aria-pressed", el.dataset.brief === kind); });
@@ -528,10 +536,78 @@ function setBriefKind(kind) {
 }
 $(".brief-tabs").addEventListener("click", event => { const button = event.target.closest("[data-brief]"); if (button) setBriefKind(button.dataset.brief); });
 $("#merchant-example").addEventListener("click", () => {
-  const example = {store_name:"拾光咖啡（演示）", product:"桂花拿铁", selling_point:"桂花香气，搭配柔和奶香。临窗坐坐，给午后留一点空闲。", offer:"", address:"示例城市 · 春日路 18 号（虚构地址）", cta:"欢迎到店，喝一杯喜欢的咖啡。"};
-  for (const [key, value] of Object.entries(example)) $(`#merchant-${key.replaceAll("_", "-")}`).value = value;
-  state.merchantExample = true; $("#merchant-example-note").hidden = false; setStyle("editorial");
+  const category=industry();if(!category)return;
+  const example={...category.example};
+  if($("#merchant-scenario").value==="offer")example.offer="演示活动：本周六到店体验（虚构活动）";
+  fillMerchantFields("merchant",example);
+  state.merchantExample = true; $("#merchant-example-note").hidden = false; setStyle(category.style);
 });
+const merchantKeys=["store_name","product","selling_point","offer","address","cta"];
+function readMerchantFields(prefix) {
+  return Object.fromEntries(merchantKeys.map(key=>[key,$(`#${prefix}-${key.replaceAll("_","-")}`).value.trim()]));
+}
+function fillMerchantFields(prefix, values) {
+  for(const key of merchantKeys)$(`#${prefix}-${key.replaceAll("_","-")}`).value=values[key] || "";
+}
+function industry(id=state.industry || "coffee") { return state.config?.merchant_catalog?.industries.find(item=>item.id===id); }
+function setupMerchantCatalog() {
+  const catalog=state.config.merchant_catalog;
+  $("#industry-options").innerHTML=catalog.industries.map(item=>`<button type="button" data-industry="${item.id}" aria-pressed="false"><span>${item.icon}</span>${esc(item.label)}</button>`).join("");
+  $("#merchant-scenario").innerHTML=options(catalog.scenarios.map(item=>[item.id,item.label]),"visit");
+  selectIndustry(state.industry || "coffee");renderMerchantReuse();setBriefKind(state.briefKind);
+  if(state.current)renderMerchantSummary();
+}
+function selectIndustry(id) {
+  const category=industry(id);if(!category)return;
+  state.industry=id;
+  $$("[data-industry]").forEach(button=>{button.classList.toggle("selected",button.dataset.industry===id);button.setAttribute("aria-pressed",button.dataset.industry===id);});
+  $("#merchant-store-name").placeholder=`例如：${category.example.store_name.replace("（演示）","")}`;
+  $("#merchant-product").placeholder=`例如：${category.example.product}`;
+  $("#merchant-selling-point").placeholder=category.example.selling_point;
+  $("#photo-suggestions").innerHTML=category.photos.map(text=>`<li>${esc(text)}</li>`).join("");
+  if(!$("#merchant-cta").value || state.lastDefaultCta===$("#merchant-cta").value || $("#merchant-cta").value==="欢迎到店，喝一杯喜欢的咖啡。")$("#merchant-cta").value=category.example.cta;
+  state.lastDefaultCta=category.example.cta;updateScenario();
+}
+function updateScenario() {
+  const category=industry(), scenario=state.config?.merchant_catalog?.scenarios.find(item=>item.id===$("#merchant-scenario").value);
+  if(!category || !scenario)return;
+  $("#merchant-category-title").textContent=`${category.label} · ${scenario.label}`;
+  $("#scenario-note").textContent=scenario.description;
+  $("#merchant-offer").required=scenario.id==="offer";
+}
+function renderMerchantReuse() {
+  const select=$("#merchant-reuse"),selected=select.value,seen=new Set();
+  const projects=state.projects.filter(p=>{const key=p.merchant?.store_name;if(!key || seen.has(key) || p.archived)return false;seen.add(key);return true;});
+  select.innerHTML='<option value="">从已有作品选择…</option>'+projects.map(p=>`<option value="${p.id}">${esc(p.merchant.store_name)}${p.example ? " · 示例":""}</option>`).join("");
+  if(projects.some(p=>p.id===selected))select.value=selected;
+}
+function reuseMerchant(profile, example=false) {
+  selectIndustry(profile.industry || "coffee");
+  $("#merchant-scenario").value=profile.scenario || "visit";
+  fillMerchantFields("merchant",profile);updateScenario();
+  state.merchantExample=Boolean(example);$("#merchant-example-note").hidden=!example;
+}
+function renderMerchantSummary() {
+  const merchant=state.draft?.merchant;$("#merchant-summary").hidden=!merchant;if(!merchant)return;
+  $("#merchant-summary-name").textContent=merchant.store_name;
+  $("#merchant-summary-detail").textContent=`${industry(merchant.industry)?.label || "门店宣传"} · ${merchant.product}`;
+}
+$("#industry-options").addEventListener("click",event=>{const button=event.target.closest("[data-industry]");if(button)selectIndustry(button.dataset.industry);});
+$("#merchant-scenario").addEventListener("change",updateScenario);
+$("#merchant-reuse").addEventListener("change",event=>{const project=state.projects.find(p=>p.id===event.target.value);if(project?.merchant){reuseMerchant(project.merchant,project.example);toast("门店资料已填入，可以调整产品和活动后生成新作品。");}});
+$("#edit-merchant").addEventListener("click",()=>{if(state.saving || state.uploading)return;fillMerchantFields("edit",state.draft.merchant);showError("#merchant-edit-error");$("#merchant-dialog").showModal();});
+$("#merchant-edit-close").addEventListener("click",()=>$("#merchant-dialog").close());
+$("#merchant-edit-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  try{const merchant=E.validateMerchant({...state.draft.merchant,...readMerchantFields("edit")});const edit=collectEdit();edit.merchant=merchant;applyDraft(edit);$("#merchant-dialog").close();toast("资料已应用到草稿，请核对分镜字幕后保存。");}
+  catch(error){showError("#merchant-edit-error",error.message);}
+});
+$("#reuse-merchant").addEventListener("click",()=>{
+  if(!canLeave() || !state.draft?.merchant)return;
+  const merchant=E.clone(state.draft.merchant),example=state.current.example,style=state.draft.style,aspect=state.draft.aspect;
+  newProject();setBriefKind("merchant");reuseMerchant(merchant,example);setStyle(style);setAspect(aspect);toast("已带入门店资料，修改本次宣传内容即可。");
+});
+
 async function uploadFiles(files, target=null) {
   if (!state.current || state.uploading || state.saving) return;
   const id=state.current.id;state.uploading++;let assigned=0,uploaded=0;
@@ -630,7 +706,7 @@ $("#library-grid").addEventListener("click",async event=>{
 });
 function renderHistory(jobs) {
   $("#history-count").textContent=jobs.length;$("#history-panel").hidden=!jobs.length;
-  $("#history-list").innerHTML=jobs.slice(0,12).map(job=>`<div class="history-item"><div><b>版本 ${job.version} · ${Number(job.duration.toFixed(1))} 秒</b><small>${new Date(job.created_at).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} · ${job.narration ? "中文配音":"无配音"}${job.music ? " · 音乐":""}</small></div>${job.status==="completed" ? `<button data-history-job="${job.id}">查看</button>` : `<span>${esc(({failed:"失败",queued:"等待中",rendering:"合成中",cancelled:"已取消"})[job.status] || job.status)}</span>`}</div>`).join("");
+  $("#history-list").innerHTML=jobs.slice(0,12).map(job=>`<div class="history-item"><div><b>版本 ${job.version} · ${Number(Number(job.duration || 0).toFixed(1))} 秒</b><small>${new Date(job.created_at).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} · ${job.narration ? "中文配音":"无配音"}${job.music ? " · 音乐":""}</small></div>${job.status==="completed" ? `<button data-history-job="${job.id}">查看</button>` : `<span>${esc(({failed:"失败",queued:"等待中",rendering:"合成中",cancelled:"已取消"})[job.status] || job.status)}</span>`}</div>`).join("");
 }
 async function refreshHistory(){
   if(!state.current)return;const id=state.current.id;

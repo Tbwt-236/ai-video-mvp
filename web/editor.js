@@ -9,10 +9,12 @@
   function editable(project) {
     return {title:project.title, style:project.style, aspect:project.aspect,
       scenes:project.scenes.map(scene), accent_color:project.accent_color || null,
-      cover_scene:project.cover_scene || 0};
+      cover_scene:project.cover_scene || 0,
+      merchant:project.merchant ? {industry:"coffee",scenario:"visit",...clone(project.merchant)} : null};
   }
   function validate(edit) {
     if (!edit.title.trim()) throw new Error("请填写作品名称。");
+    if (edit.title.length>32) throw new Error("作品名称不超过 32 字。");
     if (edit.scenes.length < 1 || edit.scenes.length > 8) throw new Error("每个作品需要 1–8 个分镜。");
     for (const item of edit.scenes) {
       if (!item.heading.trim() || !item.caption.trim()) throw new Error("每个分镜都需要标题和字幕。");
@@ -20,7 +22,15 @@
       if (!Number.isInteger(item.duration) || item.duration < 2 || item.duration > 20) throw new Error("每幕时长需要是 2–20 秒的整数。");
     }
     if (edit.scenes.reduce((sum,item) => sum + item.duration, 0) > 60) throw new Error("分镜总时长不能超过 60 秒。开启配音后可自动延长。");
+    if(edit.merchant)validateMerchant(edit.merchant);
     return edit;
+  }
+  function validateMerchant(value) {
+    for(const [field,max] of Object.entries({store_name:24,product:32,selling_point:48,offer:40,address:48,cta:32})) {
+      if(typeof value[field]!=="string" || value[field].length>max || (field!=="offer" && !value[field].trim())) throw new Error("请完整填写门店资料，并遵守字数限制。");
+    }
+    if(value.scenario==="offer" && !value.offer.trim())throw new Error("活动宣传需要填写活动信息，请写清内容和适用时间。");
+    return value;
   }
   function transform(edit, action, index = 0) {
     const next = clone(edit), count = next.scenes.length;
@@ -47,7 +57,7 @@
     else throw new Error("不支持的分镜操作。");
     return next;
   }
-  const api = {clone, scene, editable, validate, transform};
+  const api = {clone, scene, editable, validate, validateMerchant, transform};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.FrameEditor = api;
 })(typeof window !== "undefined" ? window : this);

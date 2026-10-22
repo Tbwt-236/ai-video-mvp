@@ -135,7 +135,7 @@ def scene_image(project, index, size=None, asset_dir=None):
         im = Image.alpha_composite(im.convert("RGBA"), overlay).convert("RGB")
         draw = ImageDraw.Draw(im)
     scale = min(w, h) / 720
-    brand = project.get("merchant", {}).get("store_name", "F R A M E   /   STUDIO")
+    brand = (project.get("merchant") or {}).get("store_name", "F R A M E   /   STUDIO")
     text_block(draw, brand, margin, margin, w-2*margin-100*scale, h*.07, max(12, int(16*scale)), light)
     draw.text((w-margin, margin), f"{index+1:02d} / {len(project['scenes']):02d}", font=font(max(12, int(16*scale))), fill=accent, anchor="rt")
     heading_fraction = {"bottom": .565, "center": .34, "top": .16}[scene.get("text_position", "bottom")]

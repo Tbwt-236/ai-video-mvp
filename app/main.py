@@ -21,7 +21,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .models import Brief, MerchantBrief, PreviewRequest, ProjectEdit, ProjectState, RenderRequest, VersionRequest
 from .assets import MAX_UPLOAD, list_photos, photo_path, save_photo
-from .merchant import merchant_storyboard
+from .merchant import catalog as merchant_catalog, merchant_storyboard
 from .narration import NarrationError, available as narration_available
 from .renderer import ROOT, font, render, scene_image
 from .store import Store, now
@@ -107,7 +107,8 @@ def create_app(data_dir=None):
     @app.get("/api/config")
     def config():
         return {"ai_available": bool(os.getenv("DEEPSEEK_API_KEY", "").strip()),
-                "examples": EXAMPLES, "renderer": "门店照片短片 · H.264 MP4 · 720p · 24 fps",
+                "examples": EXAMPLES, "merchant_catalog": merchant_catalog(),
+                "renderer": "门店照片短片 · H.264 MP4 · 720p · 24 fps",
                 "narration_available": narration_available(),
                 "narration_note": "本机中文语音 · 朗读画面字幕" if narration_available() else "本机未提供中文配音，仍可导出照片、字幕与音乐"}
 
@@ -207,6 +208,8 @@ def create_app(data_dir=None):
             if scene.asset_id and not (store.directory / "assets" / project["id"] / f"{scene.asset_id}.jpg").is_file():
                 raise HTTPException(400, "照片不存在或不属于当前作品，请重新上传")
         changes = edit.model_dump(exclude={"version"})
+        if "merchant" not in edit.model_fields_set:
+            changes.pop("merchant", None)
         project.update(changes)
         project.update(version=edit.version+1, updated_at=now(), duration=sum(s.duration for s in edit.scenes))
         if not store.save_project(project, expected_version=edit.version):
@@ -231,7 +234,10 @@ def create_app(data_dir=None):
         for scene in edit.scenes:
             if scene.asset_id and photo_path(directory, scene.asset_id) is None:
                 raise HTTPException(400, "照片不存在或不属于当前作品")
-        project.update(edit.model_dump(exclude={"version", "index"}))
+        changes = edit.model_dump(exclude={"version", "index"})
+        if "merchant" not in edit.model_fields_set:
+            changes.pop("merchant", None)
+        project.update(changes)
         buffer = io.BytesIO()
         scene_image(project, edit.index, asset_dir=directory).save(buffer, format="PNG")
         return Response(buffer.getvalue(), media_type="image/png")

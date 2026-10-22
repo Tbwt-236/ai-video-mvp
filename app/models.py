@@ -40,6 +40,31 @@ class Scene(BaseModel):
         return value
 
 
+class MerchantProfile(BaseModel):
+    industry: Literal["coffee", "food", "bakery", "beauty", "pet", "flowers"] = "coffee"
+    scenario: Literal["visit", "product", "offer", "story"] = "visit"
+    store_name: str = Field(min_length=1, max_length=24)
+    product: str = Field(min_length=1, max_length=32)
+    selling_point: str = Field(min_length=1, max_length=48)
+    offer: str = Field(default="", max_length=40)
+    address: str = Field(min_length=1, max_length=48)
+    cta: str = Field(default="欢迎到店，发现一份喜欢。", min_length=1, max_length=32)
+
+    @field_validator("store_name", "product", "selling_point", "address", "cta", "offer")
+    @classmethod
+    def clean_merchant_text(cls, value, info):
+        value = " ".join(value.split())
+        if not value and info.field_name != "offer":
+            raise ValueError("请填写门店信息")
+        return value
+
+    @model_validator(mode="after")
+    def offer_needs_details(self):
+        if self.scenario == "offer" and not self.offer:
+            raise ValueError("活动宣传需要填写活动信息，包括具体内容与适用时间")
+        return self
+
+
 class ProjectEdit(BaseModel):
     title: str = Field(min_length=1, max_length=32)
     style: Literal["cinema", "editorial", "tech"]
@@ -48,6 +73,7 @@ class ProjectEdit(BaseModel):
     version: int = Field(ge=1)
     accent_color: str | None = Field(default=None, pattern=r"^#[a-fA-F0-9]{6}$")
     cover_scene: int = Field(default=0, ge=0, le=7)
+    merchant: MerchantProfile | None = None
 
     @field_validator("title")
     @classmethod
@@ -84,22 +110,8 @@ class RenderRequest(BaseModel):
     narration: bool = False
 
 
-class MerchantBrief(BaseModel):
-    store_name: str = Field(min_length=1, max_length=24)
-    product: str = Field(min_length=1, max_length=32)
-    selling_point: str = Field(min_length=1, max_length=48)
-    offer: str = Field(default="", max_length=40)
-    address: str = Field(min_length=1, max_length=48)
-    cta: str = Field(default="欢迎到店，喝一杯喜欢的咖啡。", min_length=1, max_length=32)
+class MerchantBrief(MerchantProfile):
     style: Literal["cinema", "editorial", "tech"] = "editorial"
     aspect: Literal["9:16", "16:9", "1:1"] = "9:16"
     duration: Literal[15, 30, 45, 60] = 15
     example: bool = False
-
-    @field_validator("store_name", "product", "selling_point", "address", "cta", "offer")
-    @classmethod
-    def clean_merchant_text(cls, value, info):
-        value = " ".join(value.split())
-        if not value and info.field_name != "offer":
-            raise ValueError("请填写门店信息")
-        return value

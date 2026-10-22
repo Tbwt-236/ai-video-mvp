@@ -52,8 +52,11 @@
             <form id="brief-form">
               <div class="brief-tabs" role="group" aria-label="创作类型"><button type="button" data-brief="merchant" class="selected" aria-pressed="true">商家宣传</button><button type="button" data-brief="creative" aria-pressed="false">自由创意</button></div>
               <div id="merchant-fields">
-                <div class="merchant-intro"><span>咖啡小店 · 到店宣传</span><button type="button" id="merchant-example">填入虚构示例 ↗</button></div>
-                <p id="merchant-example-note" class="generation-note" hidden>当前是虚构演示信息；演示包中的咖啡图为 AI 素材，不代表真实门店。下载文案保留演示标识，正式制作请新建作品并填写真实信息。</p>
+                <div class="merchant-intro"><span id="merchant-category-title">咖啡茶饮 · 到店邀请</span><button type="button" id="merchant-example">填入虚构示例 ↗</button></div>
+                <div id="industry-options" class="industry-options" role="group" aria-label="门店品类"></div>
+                <div class="merchant-selects"><label>这次想拍什么<select id="merchant-scenario" aria-label="宣传用途"></select></label><label>复用门店资料<select id="merchant-reuse" aria-label="复用门店资料"><option value="">从已有作品选择…</option></select></label></div>
+                <p id="scenario-note" class="generation-note"></p>
+                <p id="merchant-example-note" class="generation-note" hidden>当前是虚构演示信息，不代表真实门店。下载文案保留演示标识，正式制作请新建作品并填写真实信息。</p>
                 <div class="merchant-grid">
                   <label>店名<input id="merchant-store-name" maxlength="24" required placeholder="例如：你的咖啡店名"></label>
                   <label>这次主推什么<input id="merchant-product" maxlength="32" required placeholder="例如：桂花拿铁"></label>
@@ -62,7 +65,7 @@
                   <label class="full">门店地址<input id="merchant-address" maxlength="48" required placeholder="城市、街道和门牌，方便顾客找到你"></label>
                   <label class="full">想邀请顾客做什么<input id="merchant-cta" maxlength="32" required value="欢迎到店，喝一杯喜欢的咖啡。"></label>
                 </div>
-                <p class="generation-note">只使用你填写的信息编排文案。下一步上传产品、环境和门头照片。</p>
+                <div class="photo-guide"><b>建议准备 3 类照片</b><ol id="photo-suggestions"></ol><p>只使用你填写的信息编排文案。照片可在下一步上传。</p></div>
               </div>
               <div id="creative-fields" hidden>
 
@@ -88,6 +91,7 @@
             <div class="board-heading"><label class="field-label" for="project-title">作品名称</label><input id="project-title" maxlength="32" required><div class="board-meta"><span id="board-source"></span><span id="board-total"></span></div></div>
             <div class="board-settings"><label>风格<select id="board-style"><option value="cinema">日落电影感</option><option value="editorial">自然编辑风</option><option value="tech">未来科技感</option></select></label><label>画幅<select id="board-aspect"><option>9:16</option><option>16:9</option><option>1:1</option></select></label></div>
             <div class="brand-controls"><label><input type="checkbox" id="custom-color"> 使用品牌强调色</label><input type="color" id="accent-color" value="#c2d69b" aria-label="品牌强调色"></div>
+            <div id="merchant-summary" class="merchant-summary" hidden><div><b id="merchant-summary-name"></b><small id="merchant-summary-detail"></small></div><button id="edit-merchant" class="text-button">门店资料</button><button id="reuse-merchant" class="text-button">用资料再做一支</button></div>
             <div id="draft-banner" class="draft-banner" hidden><span id="draft-message"></span><button id="restore-draft" class="text-button">恢复草稿</button><button id="discard-draft" class="text-button">丢弃草稿</button></div>
             <div class="editor-toolbar"><button id="add-scene" class="secondary">＋ 新增分镜</button><button id="undo-edit" class="secondary" disabled>↶ 撤销</button><button id="redo-edit" class="secondary" disabled>↷ 重做</button><label class="secondary batch-upload">批量上传照片<input type="file" id="batch-photos" accept="image/jpeg,image/png,image/webp" multiple aria-label="批量上传门店照片"></label></div>
             <p class="generation-note" id="editing-note">1–8 个分镜 · 总时长不超过 60 秒 · 修改自动暂存为本机草稿</p>
@@ -115,6 +119,7 @@
   </main>
   <dialog id="help-dialog"><div class="dialog-heading"><span class="eyebrow">A QUICK START</span><button id="help-close" class="icon-button" aria-label="关闭说明">✕</button></div><h2>三步，完成你的第一支短片。</h2><ol><li><b>填写门店信息</b><p>填入店名、产品、特色和地址。可先用虚构咖啡店示例体验，也可切换自由创意。</p></li><li><b>打磨分镜</b><p>为每幕上传产品、环境或门头照片，修改字幕，保存后检查裁切与文字。支持 JPG、PNG、WebP，单张不超过 8 MB、2000 万像素。</p></li><li><b>导出成片</b><p>选择中文配音与音乐，导出视频、字幕、封面和发布文案。配音会延长过短镜头；成片以实际导出时长为准。</p></li></ol><div class="help-scope"><b>当前版本的能力</b><p>门店模式只根据填写信息套用文案模板，照片由你上传，不生成实拍画面。当前中文配音使用 macOS 已安装的婷婷语音，无需 API 密钥；其他系统仍可导出字幕与音乐。</p><p>服务端配置 DEEPSEEK_API_KEY 后，可选择 AI 编写分镜；仅此模式会将创意发送给 DeepSeek。</p><p>作品保存在本机 data 文件夹。此版本适合个人本地演示。</p></div><button class="primary wide" id="help-start">开始创作<svg><use href="#i-arrow"/></svg></button></dialog>
   <dialog id="media-dialog"><div class="dialog-heading"><h2>这份作品的照片</h2><button id="media-close" class="icon-button" aria-label="关闭照片库">✕</button></div><p class="generation-note">选择照片用于当前分镜。照片可重复使用，不会改变其他镜头。</p><div id="media-grid" class="media-grid"></div></dialog>
+  <dialog id="merchant-dialog"><form id="merchant-edit-form"><div class="dialog-heading"><h2>门店资料</h2><button type="button" id="merchant-edit-close" class="icon-button" aria-label="关闭门店资料">✕</button></div><p class="generation-note">店名用于画面角标。修改资料后，请同步核对各幕字幕；已编辑的分镜文字会保留。</p><div class="merchant-grid"><label>店名<input id="edit-store-name" maxlength="24" required></label><label>主推产品或服务<input id="edit-product" maxlength="32" required></label><label class="full">到店理由<input id="edit-selling-point" maxlength="48" required></label><label class="full">活动信息<input id="edit-offer" maxlength="40"></label><label class="full">门店地址<input id="edit-address" maxlength="48" required></label><label class="full">到店邀请<input id="edit-cta" maxlength="32" required></label></div><p id="merchant-edit-error" class="error-box" role="alert" hidden></p><button class="primary wide" type="submit">应用到当前草稿</button></form></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>
