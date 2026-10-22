@@ -512,6 +512,7 @@ function handleJob(job, historical=false) {
     $("#download-srt").href = `/api/jobs/${job.id}/subtitles.srt`;
     $("#download-json").href = job.materials ? `/api/jobs/${job.id}/materials/storyboard.json` : `/api/jobs/${job.id}/storyboard.json`;
     $("#download-bundle").hidden=!job.materials;$("#download-bundle").href=`/api/jobs/${job.id}/materials.zip`;
+    $("#publish-open").hidden=!job.materials;
     for (const name of ["cover", "post"]) {
       $(`#download-${name}`).hidden = !job.materials;
       $(`#download-${name}`).href = `/api/jobs/${job.id}/materials/${name === "cover" ? "cover.png" : "post.txt"}`;
@@ -547,6 +548,55 @@ async function pollJob(id) {
     state.poll = setTimeout(()=>pollJob(id),5000);
   }
 }
+
+let publishController, publishJob;
+async function loadPublishText() {
+  if(!publishJob || !$("#publish-dialog").open)return;
+  publishController?.abort();
+  const controller=new AbortController();publishController=controller;
+  const job=publishJob;
+  $("#publish-copy").value="";$("#publish-copy-button").disabled=true;
+  $("#publish-copy-note").textContent="正在读取文案…";
+  $("#publish-retry").hidden=true;showError("#publish-error");
+  try {
+    const text=await window.FrameHTTP.requestText(`/api/jobs/${job.id}/materials/post.txt`,{signal:controller.signal},{timeoutMs:15000});
+    if(controller.signal.aborted || publishJob?.id!==job.id)return;
+    if(!text.trim())throw new Error("这次导出的文案为空，请核对分镜后重新导出。");
+    $("#publish-copy").value=text;$("#publish-copy-button").disabled=false;
+    $("#publish-copy-note").textContent="复制后可粘贴到发布平台；文案中的演示标识会一并保留。";
+  } catch(error) {
+    if(controller.signal.aborted)return;
+    if(error.code==="NETWORK")connectionStatus(false);
+    $("#publish-copy-note").textContent="暂时未能读取文案，已完成的视频和封面仍可下载。";
+    showError("#publish-error",error.message);$("#publish-retry").hidden=false;
+  }
+}
+$("#publish-open").addEventListener("click",()=>{
+  const job=state.job;if(job?.status!=="completed" || !job.materials)return;
+  publishJob={...job};
+  $("#final-video").pause();
+  $("#publish-meta").textContent=`第 ${job.version} 版成片 · ${job.width} × ${job.height} · ${Number(Number(job.duration || 0).toFixed(1))} 秒`;
+  $("#publish-video").href=`/api/jobs/${job.id}/video.mp4?download=true`;
+  $("#publish-cover").href=`/api/jobs/${job.id}/materials/cover.png`;
+  $("#publish-bundle").href=`/api/jobs/${job.id}/materials.zip`;
+  $("#publish-text").href=`/api/jobs/${job.id}/materials/post.txt`;
+  $("#publish-dialog").showModal();loadPublishText();
+});
+$("#publish-close").addEventListener("click",()=>$("#publish-dialog").close());
+$("#publish-dialog").addEventListener("close",()=>{publishController?.abort();publishJob=null;});
+$("#publish-retry").addEventListener("click",loadPublishText);
+$("#publish-copy-button").addEventListener("click",async()=>{
+  const field=$("#publish-copy"),job=publishJob;
+  try {
+    await navigator.clipboard.writeText(field.value);
+    if(publishJob!==job)return;
+    $("#publish-copy-note").textContent="文案已复制，可以到发布平台粘贴。";
+  } catch {
+    if(publishJob!==job)return;
+    field.focus();field.select();
+    $("#publish-copy-note").textContent="浏览器未开放自动复制。文字已选中，请按 Ctrl+C（Mac 用 ⌘C），或长按文字复制。";
+  }
+});
 
 $("#brief-form").addEventListener("submit",async event=> {
   event.preventDefault();

@@ -42,3 +42,19 @@ test('caller cancellation remains an AbortError rather than becoming a timeout',
   const fetcher = async (url, {signal}) => { signal.throwIfAborted(); };
   await assert.rejects(H.requestJSON('/preview', {signal:controller.signal}, {fetcher}), {name:'AbortError'});
 });
+
+test('publication copy keeps Unicode and line breaks, and rejects an unexpected HTML success page', async () => {
+  const copy = '【虚构演示】\n拾光咖啡\n\n到店喝一杯 ☕';
+  assert.equal(await H.requestText('/post.txt', {}, {fetcher:async () => new Response(copy,
+    {headers:{'Content-Type':'text/plain; charset=utf-8'}})}), copy);
+  await assert.rejects(H.requestText('/post.txt', {}, {fetcher:async () => new Response('<html>proxy login</html>',
+    {headers:{'Content-Type':'text/html'}})}), {code:'INVALID_RESPONSE'});
+});
+
+test('publication copy shares cancellation and actionable download errors', async () => {
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(H.requestText('/post.txt', {signal:controller.signal},
+    {fetcher:async (url, {signal}) => signal.throwIfAborted()}), {name:'AbortError'});
+  await assert.rejects(H.requestText('/post.txt', {}, {fetcher:async () => Response.json({detail:'成片素材暂时无法读取'}, {status:404})}),
+    {code:'HTTP', status:404, message:'成片素材暂时无法读取'});
+});

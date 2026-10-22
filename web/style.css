@@ -2618,6 +2618,20 @@ dialog li p {
 .shooting-tips { color:#95a78a;line-height:1.8;font-size:12px;margin-bottom:20px; }
 .shooting-tips b { color:#d3dfc7;font-weight:500; }
 #shooting-dialog { width:min(650px,90vw);max-height:85vh;overflow:auto; }
+#publish-open { margin-top:10px; }
+#publish-dialog { width:min(660px,90vw);max-height:88vh;overflow:auto; }
+#publish-dialog h2 { font-size:22px;line-height:1.5; }
+.publish-steps { padding:0;list-style:none;counter-reset:publish; }
+.publish-steps>li { counter-increment:publish;position:relative;padding:4px 0 22px 34px;margin:18px 0;border-bottom:1px solid #35402d; }
+.publish-steps>li:last-child { margin-bottom:0;padding-bottom:0;border:0; }
+.publish-steps>li:before { content:counter(publish);position:absolute;left:0;top:2px;width:23px;height:23px;display:grid;place-items:center;border-radius:50%;background:#37452b;color:#d5e8b6;font-size:11px; }
+.publish-steps b { font-size:13px;font-weight:500; }
+.publish-steps p { font-size:11px;line-height:1.8;color:#9eae8d; }
+.publish-assets,.publish-copy-actions { display:flex;align-items:center;gap:14px;flex-wrap:wrap; }
+.publish-assets .secondary,.publish-copy-actions .primary { padding:10px 14px;font-size:11px;min-height:38px; }
+#publish-copy { display:block;width:100%;resize:vertical;min-height:170px;max-height:38vh;background:#192016;border:1px solid #3b4732;border-radius:8px;padding:12px;color:#dce7ce;font:inherit;font-size:12px;line-height:1.8;margin:12px 0; }
+#publish-copy:focus { outline:2px solid #c2d69b;outline-offset:2px; }
+#publish-copy-note { min-height:20px; }
 .remove-photo { border:0; background:none; color:#c1b6a6; cursor:pointer; font-size:11px; }
 .download-secondary { flex-wrap:wrap; row-gap:13px; }
 @media(max-width:600px) { .merchant-grid { grid-template-columns:1fr; } .merchant-intro { align-items:flex-start; } }
@@ -2790,7 +2804,7 @@ dialog li p {
   .scene-actions button { min-height:32px; }
   .scene-photo { gap:10px; }
   .composition input[type=range] { min-height:30px; }
-  #merchant-dialog,#media-dialog,#shooting-dialog { width:calc(100vw - 24px);max-width:none;padding:20px; }
+  #merchant-dialog,#media-dialog,#shooting-dialog,#publish-dialog { width:calc(100vw - 24px);max-width:none;padding:20px; }
 }
 
 @media(prefers-reduced-motion:reduce) {

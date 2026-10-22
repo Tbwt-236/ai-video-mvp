@@ -19,7 +19,7 @@
   function friendlyError(error) {
     return error instanceof TypeError ? serviceError("无法连接本地服务，请确认启动窗口仍在运行。", "NETWORK") : error;
   }
-  async function requestJSON(url, options = {}, settings = {}) {
+  async function request(url, options, settings, format) {
     const controller = new AbortController(), external = options.signal;
     const abort = () => controller.abort();
     if (external?.aborted) abort();
@@ -29,7 +29,14 @@
       const response = await (settings.fetcher || root.fetch)(url, {...options, signal:controller.signal,
         headers:options.body ? {"Content-Type":"application/json", ...options.headers} : options.headers});
       if (!response.ok) throw await responseError(response);
-      try { return await response.json(); }
+      try {
+        if (format === "text") {
+          if (!response.headers.get("Content-Type")?.toLowerCase().startsWith("text/plain"))
+            throw new Error("Unexpected text content type");
+          return await response.text();
+        }
+        return await response.json();
+      }
       catch (error) {
         if (error.name === "AbortError") throw error;
         throw serviceError("本地服务返回了无法读取的结果，请重试。", "INVALID_RESPONSE", response.status);
@@ -42,7 +49,9 @@
       clearTimeout(timeout); external?.removeEventListener("abort", abort);
     }
   }
-  const api = {requestJSON, responseError, friendlyError};
+  function requestJSON(url, options = {}, settings = {}) { return request(url, options, settings, "json"); }
+  function requestText(url, options = {}, settings = {}) { return request(url, options, settings, "text"); }
+  const api = {requestJSON, requestText, responseError, friendlyError};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.FrameHTTP = api;
 })(typeof window !== "undefined" ? window : globalThis);

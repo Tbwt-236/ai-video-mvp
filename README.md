@@ -36,7 +36,7 @@
 2. 修改标题和字幕，点缩略图检查预览。展开「画面构图」调整取景与文字位置。
    还没有照片时，点「拍摄清单」查看逐幕建议，也可下载 TXT，按清单拍好再上传。
 3. 保存分镜，选择画质、音乐和可用的中文配音，试听后导出。
-4. 播放实际成片，下载整套发布素材，或单独下载 MP4、PNG、SRT、TXT、JSON。
+4. 播放实际成片，打开「发布助手」下载视频与封面、一键复制对应成片的文案；也可下载整套素材，或单独下载 MP4、PNG、SRT、TXT、JSON。
 5. 用「多画幅副本」制作其他比例，用「另存副本」保留不同文案，用「备份作品包」迁移到其他设备。
 
 正式宣传请替换示例中的虚构信息和 AI 照片，核对自己的活动内容与地址。
@@ -105,7 +105,7 @@ node --test tests/editor.test.cjs tests/http.test.cjs tests/drafts.test.cjs
 node --check web/app.js
 ~~~
 
-当前本地 **120 项 Python、19 项 JavaScript 测试通过**。CI 配置覆盖 Linux Python 3.10/3.11/3.12 和 Windows Python 3.12，实时结果见仓库 Actions。测试包括真实视频解码、1080p 三种画幅、稳定文字、实际音量比、配音/SRT 时轴、取消任务、快照隔离、草稿副本、多画幅回滚、作品包校验、损坏照片检测、重复启动保护与断线提示。原生语音和页面操作另通过本机浏览器验证，详见 [验收说明](docs/ACCEPTANCE.md)。
+当前本地 **120 项 Python、21 项 JavaScript 测试通过**。CI 配置覆盖 Linux Python 3.10/3.11/3.12 和 Windows Python 3.12，实时结果见仓库 Actions。测试包括真实视频解码、1080p 三种画幅、稳定文字、实际音量比、配音/SRT 时轴、取消任务、快照隔离、草稿副本、多画幅回滚、作品包校验、损坏照片检测、重复启动保护与断线提示。原生语音和页面操作另通过本机浏览器验证，详见 [验收说明](docs/ACCEPTANCE.md)。
 
 制作可分发 ZIP：运行 **python scripts/build_release.py**。文件生成在项目目录的上一级，含源码、字体、说明、测试和演示作品；采用明确的文件白名单，排除 data、.env、.venv 和 Git 数据。ZIP 内的 RELEASE-MANIFEST.json 记录逐文件 SHA-256，旁边的 .sha256 文件校验完整 ZIP。重新打包自己生成的旧包时加 **--overwrite**。首次运行该包仍需要 Python 和联网安装依赖。
 
