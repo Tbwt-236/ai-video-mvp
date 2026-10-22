@@ -20,6 +20,10 @@ def load_env():
 
 if __name__ == "__main__":
     load_env()
-    port = int(os.getenv("PORT", "8000"))
+    try:
+        port = int(os.getenv("PORT", "8000"))
+        if not 1<=port<=65535:raise ValueError()
+    except ValueError:
+        raise SystemExit("PORT 需要是 1–65535 的整数，例如 8000。请检查 .env 后重新启动。")
     print(f"\n  FRAME 拾帧 · http://127.0.0.1:{port}\n  按 Ctrl+C 停止服务\n")
     uvicorn.run("app.main:app", host="127.0.0.1", port=port, log_level="info")

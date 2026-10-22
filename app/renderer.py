@@ -4,8 +4,6 @@ import copy
 import json
 import os
 import shutil
-import struct
-import wave
 from functools import lru_cache
 from pathlib import Path
 
@@ -14,6 +12,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .narration import NarrationError, synthesize
 from .process import run_process
+from .music import make_music
 
 ROOT = Path(__file__).resolve().parents[1]
 SIZES = {"9:16": (720, 1280), "16:9": (1280, 720), "1:1": (720, 720)}
@@ -153,26 +152,6 @@ def scene_image(project, index, size=None, asset_dir=None):
     return Image.alpha_composite(background.convert("RGBA"),foreground).convert("RGB")
 
 
-def make_music(path, duration, cancel=None):
-    """Original quiet sine-pad soundtrack, generated locally (no voice-over)."""
-    rate = 22050
-    chord = [130.81, 164.81, 196.00, 261.63]
-    with wave.open(str(path), "wb") as out:
-        out.setnchannels(1)
-        out.setsampwidth(2)
-        out.setframerate(rate)
-        for second in range(math.ceil(duration)):
-            if cancel:
-                cancel()
-            buffer = bytearray()
-            for i in range(min(rate, round(duration*rate)-second*rate)):
-                t = second + i / rate
-                fade = min(1, t / 1.5, (duration-t) / 2)
-                sample = sum(math.sin(2*math.pi*f*t) * (.7 + .3*math.sin(t*.4+j)) for j, f in enumerate(chord)) / len(chord)
-                buffer.extend(struct.pack("<h", int(sample * 3400 * max(0, fade))))
-            out.writeframes(buffer)
-
-
 def run_ffmpeg(args, timeout=120, cancel=None):
     result = run_process([imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y", *args],
                          timeout=timeout, cancel=cancel)
@@ -196,7 +175,7 @@ def srt(project, narrated=False):
     return "\n".join(chunks)
 
 
-def render(project, directory, music, progress, asset_dir=None, narration=False, quality="720p", speech_rate=210, music_volume=.5, cancel=None):
+def render(project, directory, music, progress, asset_dir=None, narration=False, quality="720p", speech_rate=210, music_volume=.5, music_style="ambient", cancel=None):
     project = copy.deepcopy(project)
     directory.mkdir(parents=True, exist_ok=True)
     scratch = directory / "tmp"
@@ -209,7 +188,7 @@ def render(project, directory, music, progress, asset_dir=None, narration=False,
     try:
         if narration:
             for i, scene in enumerate(project["scenes"]):
-                progress(4 + i, f"正在朗读字幕 {i+1} / {len(project['scenes'])}")
+                progress(4 + i, f"正在准备配音 {i+1} / {len(project['scenes'])}")
                 spoken = synthesize(scene.get("voiceover") or scene["caption"], scratch/f"voice-{i}.wav", convert, rate=speech_rate, cancel=cancel)
                 scene["speech_duration"] = spoken
                 scene["duration"] = max(scene["duration"], math.ceil((spoken+.6)*FPS)/FPS)
@@ -256,7 +235,7 @@ def render(project, directory, music, progress, asset_dir=None, narration=False,
             args += ["-i", str(scratch/"voice.wav")]
         if music:
             progress(88, "正在合成氛围音轨")
-            make_music(scratch/"music.wav", duration, cancel)
+            make_music(scratch/"music.wav", duration, cancel, music_style)
             args += ["-i", str(scratch/"music.wav")]
         if narration and music:
             args += ["-filter_complex", f"[2:a]volume={music_volume*.25}[bed];[1:a][bed]amix=inputs=2:duration=first:normalize=0[audio]",
@@ -273,7 +252,7 @@ def render(project, directory, music, progress, asset_dir=None, narration=False,
         (directory/"subtitles.srt").write_text(srt(project, narrated=narration), encoding="utf-8")
         project["duration"] = duration
         project["narration"] = narration
-        project["export_settings"] = {"quality":quality,"speech_rate":speech_rate,"music_volume":music_volume,"music":music,"narration":narration}
+        project["export_settings"] = {"quality":quality,"speech_rate":speech_rate,"music_volume":music_volume,"music_style":music_style,"music":music,"narration":narration}
         (directory/"storyboard.json").write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8")
         copy_text = project["title"] + "\n\n" + "\n".join(s["caption"] for s in project["scenes"])
         if project.get("example"):

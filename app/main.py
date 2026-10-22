@@ -31,6 +31,7 @@ from .checks import export_check
 from .portability import MAX_PACKAGE, export_package, import_package
 from .showcases import available_showcases, build_showcase, showcase_photo
 from .projects import copy_projects
+from .music import MUSIC_STYLES, make_music
 from .store import Store, now
 from .storyboard import EXAMPLES, generate_storyboard, offline_storyboard
 
@@ -44,6 +45,7 @@ def create_app(data_dir=None):
     upload_lock = threading.Lock()
     voice_lock = threading.Lock()
     import_lock = threading.Lock()
+    music_lock = threading.Lock()
     controls = {}
 
     @asynccontextmanager
@@ -174,6 +176,23 @@ def create_app(data_dir=None):
             raise HTTPException(400, str(exc)) from exc
         finally:
             voice_lock.release()
+
+    @app.get("/api/music/{style}.wav")
+    def preview_music(style: str):
+        if style not in MUSIC_STYLES:
+            raise HTTPException(404,"找不到这段音乐")
+        directory=store.directory/"music-previews"
+        path=directory/f"{style}-v1.wav"
+        with music_lock:
+            if not path.is_file():
+                directory.mkdir(exist_ok=True)
+                temporary=path.with_suffix(".part")
+                try:
+                    make_music(temporary,8,style=style)
+                    temporary.replace(path)
+                finally:
+                    temporary.unlink(missing_ok=True)
+        return FileResponse(path,media_type="audio/wav")
 
     @app.get("/api/projects")
     def projects(include_archived: bool = False):
@@ -372,7 +391,7 @@ def create_app(data_dir=None):
             progress(3, "准备画面与中文排版")
             metadata = render(job["snapshot"], directory, job["music"], progress,
                               store.directory / "assets" / job["project_id"], job.get("narration", False),
-                              job["quality"],job["speech_rate"],job["music_volume"],check_cancel)
+                              job["quality"],job["speech_rate"],job["music_volume"],job.get("music_style","ambient"),check_cancel)
             job.update(status="completed", progress=100, message="成片已就绪", completed_at=now(),
                        bytes=(directory/"video.mp4").stat().st_size, **metadata)
         except RenderCancelled:
@@ -416,6 +435,7 @@ def create_app(data_dir=None):
                         and job.get("quality", "720p") == request.quality
                         and job.get("speech_rate", 210) == request.speech_rate
                         and job.get("music_volume", .5) == request.music_volume
+                        and job.get("music_style","ambient") == request.music_style
                         and job["status"] in ("queued", "rendering", "completed")):
                     if job["status"] == "completed" and not (store.directory / "exports" / job["id"] / "video.mp4").is_file():
                         job.update(status="failed", error="成片文件已丢失，请重新导出。")
@@ -428,6 +448,7 @@ def create_app(data_dir=None):
                    "status": "queued", "progress": 0, "message": "等待渲染", "created_at": now(),
                    "music": request.music, "narration": request.narration, "materials": True, "snapshot": project, "title": project["title"],
                    "quality":request.quality,"speech_rate":request.speech_rate,"music_volume":request.music_volume,
+                   "music_style":request.music_style,
                    "duration": project["duration"], "aspect": project["aspect"]}
             store.save_job(job)
             event = threading.Event()

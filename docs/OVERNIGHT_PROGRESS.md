@@ -50,6 +50,10 @@
 - 第七轮真实验收：横屏作品 d03acf94-1a93-4b91-b317-f628b0f83daf，任务 a767acfa-f814-47fd-a3de-41be673a2d14；1920×1080、20.167 秒、2.4 MB，含独立口播与音乐，浏览器 readyState=4，无控制台错误。运动编码测试验证照片发生位移、文字像素位置保持稳定。
 - AI 适配器依据 2026-10-23 核对的官方文档显式关闭默认思考模式，避免短结构化任务的 token 限额被思考占用；异常/空/截断响应统一可理解错误，未调用付费 API。参考：https://api-docs.deepseek.com/guides/thinking_mode/ 与 https://api-docs.deepseek.com/guides/json_mode/ 。
 - 额度只读检查：本周已使用 21%，仍可继续正常工作；未兑换重置。
+- 第七轮 98 项 Python + 6 项 JS 测试通过，提交 d88fd67，已推送 GitHub（包含第六轮）。
+- 第八轮：三种原创本地音乐风格与 8 秒试听，音量真实编码后 RMS 比例测试通过；跨平台 bootstrap 启动器、Windows start.bat、只读 doctor.py 环境诊断。106 项 Python + 6 项 JS 测试全部通过。doctor 确认本机字体、FFmpeg、数据库、空间、语音正常。
+- 第八轮浏览器：piano.wav 试听 duration=8 / readyState=4 / paused=false；点击导出时试听自动停止。新琴音 1080p 横屏口播任务正在导出。
+- CI 扩展到 Linux Python 3.10/3.11/3.12 与 Windows Python 3.12，需推送后检查。仓库已确认公开，PR #1 OPEN、旧标题仍为 V0.2，最终交付前更新标题正文。
 
 ## 后续交接
 

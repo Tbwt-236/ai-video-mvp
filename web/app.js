@@ -392,20 +392,23 @@ function togglePreview() {
 
 function exportSettings() {
   const narration=$("#narration").checked,music=$("#music").checked;
-  return {music,narration,quality:$("#quality").value,speech_rate:narration ? Number($("#speech-rate").value):210,music_volume:music ? Number($("#music-volume").value)/100:.5};
+  return {music,narration,quality:$("#quality").value,speech_rate:narration ? Number($("#speech-rate").value):210,music_volume:music ? Number($("#music-volume").value)/100:.5,music_style:music ? $("#music-style").value:"ambient"};
 }
 function settingsMatch(job) {
   const expected=exportSettings();
-  return job.music===expected.music && Boolean(job.narration)===expected.narration && (job.quality || "720p")===expected.quality && (job.speech_rate || 210)===expected.speech_rate && (job.music_volume ?? .5)===expected.music_volume;
+  return job.music===expected.music && Boolean(job.narration)===expected.narration && (job.quality || "720p")===expected.quality && (job.speech_rate || 210)===expected.speech_rate && (job.music_volume ?? .5)===expected.music_volume && (job.music_style || "ambient")===expected.music_style;
 }
 function restoreExportSettings(job) {
   $("#music").checked=job.music;$("#narration").checked=Boolean(job.narration);$("#quality").value=job.quality || "720p";
+  $("#music-style").value=job.music_style || "ambient";
   const rate=String(job.speech_rate || 210);
   if(![...$("#speech-rate").options].some(option=>option.value===rate))$("#speech-rate").add(new Option(`自定 · ${rate}`,rate));
   $("#speech-rate").value=rate;$("#music-volume").value=Math.round((job.music_volume ?? .5)*100);updateAudioControls();
 }
 function updateAudioControls() {
   $("#music-volume-row").hidden=!$("#music").checked;
+  $("#music-settings").hidden=!$("#music").checked;
+  $("#music-audio").volume=Number($("#music-volume").value)/100;
   $("#music-volume-value").textContent=`${$("#music-volume").value}%`;
   $("#voice-settings").hidden=!$("#narration").checked;
   $("#narration").disabled=!state.config?.narration_available && !$("#narration").checked;
@@ -413,11 +416,27 @@ function updateAudioControls() {
   $("#check-export").disabled=!state.current;
 }
 function stopVoice() {
+  stopMusic();
   state.voiceRevision=(state.voiceRevision || 0)+1;state.voiceController?.abort();state.voiceController=null;
   $("#voice-audio").pause();$("#voice-audio").removeAttribute("src");$("#voice-audio").hidden=true;
   if(state.voiceObject){URL.revokeObjectURL(state.voiceObject);state.voiceObject=null;}
   $("#voice-preview").textContent="试听当前分镜";updateAudioControls();
 }
+function stopMusic() {
+  $("#music-audio").pause();$("#music-preview").textContent="试听 8 秒";
+}
+$("#music-preview").addEventListener("click",async()=>{
+  const audio=$("#music-audio");
+  if(!audio.paused){stopMusic();return;}
+  stopVoice();$("#final-video").pause();
+  const url=`/api/music/${$("#music-style").value}.wav`;
+  if(audio.getAttribute("src")!==url){audio.src=url;audio.load();}
+  else audio.currentTime=0;
+  try{await audio.play();$("#music-preview").textContent="暂停试听";}
+  catch{toast("音乐试听未能开始，请重试。",true);}
+});
+$("#music-audio").addEventListener("ended",stopMusic);
+$("#music-audio").addEventListener("error",()=>{if($("#music-audio").getAttribute("src")){stopMusic();toast("音乐暂时无法读取，请检查本地服务。",true);}});
 function clearPreflight() {
   $("#preflight-result").innerHTML="<p>保存作品后，可检查照片、文字时长和导出环境。</p>";
 }
@@ -587,6 +606,7 @@ $("#fork-draft").addEventListener("click",async()=>{
 });
 $("#export-video").addEventListener("click",async()=> {
   if(!state.current || state.exporting)return;
+  stopVoice();
   state.exporting=true;
   $("#export-video").disabled=true; showError("#export-error");
   try {
@@ -605,7 +625,7 @@ $("#export-video").addEventListener("click",async()=> {
   } catch(error){showError("#export-error",error.message);$("#export-video").disabled=false;}
   finally{state.exporting=false;}
 });
-for (const control of [$("#music"), $("#narration"),$("#quality"),$("#speech-rate"),$("#music-volume")]) control.addEventListener("change",async()=> {
+for (const control of [$("#music"), $("#narration"),$("#quality"),$("#speech-rate"),$("#music-volume"),$("#music-style")]) control.addEventListener("change",async()=> {
   stopVoice();updateAudioControls();clearPreflight();
   clearTimeout(state.poll); state.job=null; resetExport();
   if(!state.current)return;

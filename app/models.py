@@ -128,6 +128,7 @@ class RenderRequest(BaseModel):
     quality: Literal["720p", "1080p"] = "720p"
     speech_rate: int = Field(default=210, ge=140, le=280)
     music_volume: float = Field(default=.5, ge=0, le=1, allow_inf_nan=False)
+    music_style: Literal["ambient","piano","light"] = "ambient"
 
     @model_validator(mode="after")
     def normalize_inactive_settings(self):
@@ -135,6 +136,7 @@ class RenderRequest(BaseModel):
             self.speech_rate = 210
         if not self.music:
             self.music_volume = .5
+            self.music_style = "ambient"
         return self
 
 
