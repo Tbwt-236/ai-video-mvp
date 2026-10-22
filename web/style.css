@@ -2695,6 +2695,36 @@ dialog li p {
 .preflight-panel .check-blocking { color:#e8a18a; }
 #cancel-export { margin-top:10px;width:100%; }
 
+.mobile-dock { display:none; }
+.library-tools { display:flex;align-items:center;gap:10px;flex-wrap:wrap; }
+.library-tools .secondary { padding:10px 14px;font-size:12px; }
+.panel { scroll-margin-top:24px; }
+@media(min-width:801px) {
+  .preview-column { position:sticky;top:20px;max-height:calc(100vh - 40px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#536044 transparent;padding-right:3px; }
+}
+@media(min-width:601px) and (max-width:800px) {
+  .preview-column { position:sticky;top:80px;max-height:calc(100vh - 100px);overflow-y:auto;scrollbar-width:thin; }
+}
+@media(max-width:800px) { .panel { scroll-margin-top:80px; } }
+@media(max-width:600px) {
+  #library-view .page-heading { flex-direction:column;gap:16px; }
+  .library-tools { flex-direction:row;align-items:stretch;gap:7px;width:100%; }
+  .library-tools>* { flex:1;justify-content:center;white-space:nowrap; }
+  .library-tools .secondary { padding:8px;font-size:10px; }
+  .library-tools .primary { padding:8px;font-size:10px; }
+  .mobile-dock { display:flex;position:fixed;bottom:0;left:0;right:0;z-index:25;background:rgba(24,31,21,.97);border-top:1px solid #566343;backdrop-filter:blur(16px);padding:8px 10px calc(8px + env(safe-area-inset-bottom));gap:6px; }
+  .mobile-dock button { flex:1;min-height:42px;border:0;border-radius:7px;background:#293323;color:#d4e4b8;font-size:11px; }
+  .mobile-dock button:last-child { background:#d5ed9a;color:#23301b; }
+  .has-mobile-dock { padding-bottom:76px; }
+  .has-mobile-dock .toast { bottom:85px; }
+  .scene-content { grid-template-columns:62px minmax(0,1fr);gap:10px; }
+  .scene-thumb { display:block;width:62px; }
+  .scene-actions button { min-height:32px; }
+  .scene-photo { gap:10px; }
+  .composition input[type=range] { min-height:30px; }
+  #merchant-dialog,#media-dialog { width:calc(100vw - 24px);max-width:none;padding:20px; }
+}
+
 @media(prefers-reduced-motion:reduce) {
   *,*:before,*:after {
     animation:none!important;

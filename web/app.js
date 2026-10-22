@@ -42,13 +42,28 @@ function seconds(value) { return `${String(Math.floor(value/60)).padStart(2,"0")
 function total() { return state.draft ? state.draft.scenes.reduce((sum,s) => sum + (Number(s.duration)||0),0) : Number($("#duration").value); }
 function previewUrl(project, index) { return `/api/projects/${project.id}/scenes/${index}.png?v=${project.version}`; }
 
+function currentRoute() { return !$("#library-view").hidden ? "#library" : state.current ? `#project=${state.current.id}` : "#new"; }
+function rememberRoute(route=currentRoute(),replace=false) {
+  if(location.hash!==route)history[replace ? "replaceState":"pushState"](null,"",route);
+}
+async function restoreRoute() {
+  if(!canLeave()){rememberRoute(currentRoute(),true);return;}
+  const route=location.hash;
+  if(route==="#library"){setPage("library");return;}
+  const match=route.match(/^#project=([a-f0-9-]{36})$/);
+  if(match){await openProject(match[1]);return;}
+  if(route==="#new" && state.current)newProject();
+}
+
 function setPage(page) {
   $("#studio-view").hidden = page !== "studio";
   $("#library-view").hidden = page !== "library";
   $("#nav-studio").classList.toggle("active", page === "studio");
   $("#nav-library").classList.toggle("active", page === "library");
   $("#breadcrumb").textContent = page === "studio" ? "创作工作台" : "我的作品";
-  if (page === "library") { stopPreview(); renderLibrary(); }
+  if (page === "library") { stopPreview();$("#final-video").pause();stopVoice();renderLibrary(); }
+  updateDock();
+  rememberRoute();
 }
 
 function setStep(step) {
@@ -60,7 +75,7 @@ function setStep(step) {
 }
 
 function canLeave() {
-  if (state.uploading || state.saving) { toast("请等待照片上传或保存完成。", true); return false; }
+  if (state.uploading || state.saving || state.importing) { toast("请等待上传、导入或保存完成。", true); return false; }
   if (state.dirty) persistDraft();
   return true;
 }
@@ -71,6 +86,7 @@ function newProject() {
   clearTimeout(state.poll);
   stopPreview();
   state.current = null; state.draft = null; state.assets = []; state.job = null; state.dirty = false;
+  $(".preview-column").scrollTop=0;
   stopVoice();updateAudioControls();clearPreflight();
   clearTimeout(state.previewTimer); state.previewController?.abort(); state.previewRevision++;
   $("#history-panel").hidden = true;
@@ -155,15 +171,17 @@ async function openProject(id) {
     if (serial !== state.serial) return;
     clearTimeout(state.poll); stopPreview();
     state.current = project; state.dirty = false; state.scene = 0; state.job = null;
+    $(".preview-column").scrollTop=0;
     stopVoice();
     displayBoard(); setPage("studio"); renderRecent();
     window.scrollTo({top:0, behavior:"smooth"});
     const [jobs, assets] = await Promise.all([api(`/api/projects/${id}/jobs`),api(`/api/projects/${id}/assets`)]);
     if (serial !== state.serial) return;
     state.assets = assets; renderHistory(jobs);
-    const matching = jobs.find(j => j.version === project.version);
+    const candidates=jobs.filter(j=>j.version===project.version);
+    const matching=candidates.find(j=>["queued","rendering","cancelling"].includes(j.status)) || candidates.find(j=>j.status==="completed") || candidates[0];
     if (matching) { restoreExportSettings(matching); handleJob(matching); }
-  } catch (error) { toast(error.message, true); }
+  } catch (error) { toast(error.message, true);rememberRoute(currentRoute(),true); }
 }
 
 function displayBoard() {
@@ -177,7 +195,8 @@ function displayBoard() {
   $("#save-status").textContent = "已保存至本地";
   renderMerchantSummary();
   showError("#save-error"); showError("#export-error");
-  renderScenes(); updateBoardTotal(); showScene(0); setStep(2); resetExport(); findDraft();updateAudioControls();clearPreflight();
+  renderScenes(); updateBoardTotal(); showScene(0); setStep(2); resetExport(); findDraft();updateAudioControls();clearPreflight();updateDock();
+  rememberRoute(`#project=${p.id}`);
 }
 
 function assetUrl(asset) { return `/api/projects/${state.current.id}/assets/${asset}.jpg`; }
@@ -424,6 +443,7 @@ function handleJob(job, historical=false) {
     $("#export-note").textContent = "可继续浏览作品，重新打开会恢复任务进度";
     clearTimeout(state.poll); state.poll = setTimeout(()=>pollJob(job.id),1200);
   } else if (job.status === "completed") {
+    clearTimeout(state.previewTimer);state.previewController?.abort();state.previewRevision++;
     clearTimeout(state.poll); stopPreview(); setStep(3);
     $("#job-progress").hidden = true; $("#export-video").hidden = true; $("#download-actions").hidden = false;
     $("#download-mp4").href = `/api/jobs/${job.id}/video.mp4?download=true`;
@@ -508,9 +528,10 @@ $("#scenes").addEventListener("input",event=> {
 [$("#project-title"),$("#board-style"),$("#board-aspect"),$("#custom-color"),$("#accent-color")].forEach(el=>el.addEventListener("input",markDirty));
 document.addEventListener("click",event=> {
   const project=event.target.closest("[data-project]"); if(project)openProject(project.dataset.project);
-  const preview=event.target.closest("[data-preview]"); if(preview){stopPreview();showScene(Number(preview.dataset.preview));}
+  const preview=event.target.closest("[data-preview]"); if(preview){stopPreview();showScene(Number(preview.dataset.preview));if(matchMedia("(max-width:600px)").matches)$(".preview-panel").scrollIntoView({behavior:"smooth",block:"start"});}
 });
 $("#save-board").addEventListener("click",async()=> { if(await saveBoard())toast("分镜已保存，预览已更新。"); });
+$("#save-top").addEventListener("click",async()=> { if(await saveBoard())toast("分镜已保存，预览已更新。"); });
 $("#export-video").addEventListener("click",async()=> {
   if(!state.current || state.exporting)return;
   state.exporting=true;
@@ -608,6 +629,7 @@ async function init(){
     $("#examples").innerHTML=config.examples.map((ex,i)=>`<button type="button" class="example-chip" data-example="${i}">${esc(ex.label)} ↗</button>`).join("");
     const ai=$("#generation-mode option[value=ai]");ai.disabled=!config.ai_available;ai.textContent=config.ai_available?"DeepSeek AI · 已连接":"DeepSeek AI · 尚未配置";
     if(health.status!=="ok")throw new Error("视频合成环境未就绪，请查看启动日志。");
+    await restoreRoute();
   }catch(error){$("#connection").classList.add("offline");$("#connection").innerHTML='<span class="status-dot"></span>服务连接异常';showError("#form-error",error.message);}
 }
 function setBriefKind(kind) {
@@ -803,5 +825,45 @@ $("#history-list").addEventListener("click",async event=>{
   try{handleJob(await api(`/api/jobs/${button.dataset.historyJob}`),true);}catch(error){toast(error.message,true);}
 });
 
+function updateDock() {
+  $("#mobile-dock").hidden=!state.current || $("#studio-view").hidden;
+  document.body.classList.toggle("has-mobile-dock",!$("#mobile-dock").hidden);
+}
+$("#mobile-dock").addEventListener("click",async event=>{
+  const button=event.target.closest("[data-mobile]");if(!button || !state.current)return;
+  if(button.dataset.mobile==="save"){if(await saveBoard())toast("分镜已保存。");return;}
+  const target=button.dataset.mobile==="edit" ? "#storyboard-panel" : button.dataset.mobile==="preview" ? ".preview-panel" : ".export-panel";
+  $(target).scrollIntoView({behavior:"smooth",block:"start"});
+});
+
+$("#backup-project").addEventListener("click",async()=>{
+  if(!state.current || state.backingUp)return;
+  state.backingUp=true;$("#backup-project").disabled=true;
+  try{
+    if(!(await saveBoard()))return;
+    const id=state.current.id;
+    toast("正在打包分镜和照片…");
+    const response=await fetch(`/api/projects/${id}/package.zip`);
+    if(!response.ok)throw new Error((await response.json()).detail || "作品备份失败。");
+    const url=URL.createObjectURL(await response.blob()),link=document.createElement("a");
+    link.href=url;link.download="frame-project.zip";document.body.append(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);toast("作品包已准备好，包含分镜和照片，可通过作品库导入。");
+  }catch(error){toast(error.message,true);}
+  finally{state.backingUp=false;$("#backup-project").disabled=false;}
+});
+$("#import-project").addEventListener("change",async event=>{
+  const input=event.target,file=input.files[0];if(!file || !canLeave())return;
+  if(file.size>350*1024*1024){toast("作品包不能超过 350 MB。",true);input.value="";return;}
+  state.importing=true;input.disabled=true;
+  try{
+    toast("正在验证并导入作品包…");
+    const project=await api("/api/projects/import",{method:"POST",body:file,headers:{"Content-Type":"application/zip"}});
+    state.importing=false;await refreshProjects();await openProject(project.id);
+    toast("已导入为独立作品，原来的作品保持不变。");
+  }catch(error){toast(error.message,true);}
+  finally{state.importing=false;input.disabled=false;input.value="";}
+});
+
 setBriefKind("merchant");
+window.addEventListener("hashchange",()=>restoreRoute());
 init();

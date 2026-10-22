@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.concurrency import run_in_threadpool
+from starlette.background import BackgroundTask
 
 from .models import Brief, MerchantBrief, PreviewRequest, ProjectEdit, ProjectState, RenderRequest, VersionRequest, VoicePreview
 from .assets import MAX_UPLOAD, list_photos, photo_path, save_photo
@@ -27,6 +28,7 @@ from .narration import NarrationError, available as narration_available, synthes
 from .renderer import ROOT, font, render, scene_image, run_ffmpeg
 from .process import RenderCancelled
 from .checks import export_check
+from .portability import MAX_PACKAGE, export_package, import_package
 from .store import Store, now
 from .storyboard import EXAMPLES, generate_storyboard, offline_storyboard
 
@@ -39,6 +41,7 @@ def create_app(data_dir=None):
     render_lock = threading.Lock()
     upload_lock = threading.Lock()
     voice_lock = threading.Lock()
+    import_lock = threading.Lock()
     controls = {}
 
     @asynccontextmanager
@@ -66,18 +69,21 @@ def create_app(data_dir=None):
             if origin and origin != f"{request.url.scheme}://{request.headers.get('host')}":
                 return JSONResponse({"detail": "仅接受同源请求"}, status_code=403)
             upload = request.method == "POST" and request.url.path.startswith("/api/projects/") and request.url.path.endswith("/assets")
+            importing = request.method == "POST" and request.url.path == "/api/projects/import"
             content_type = request.headers.get("content-type", "").split(";")[0]
             if upload and content_type not in {"image/jpeg", "image/png", "image/webp"}:
                 return JSONResponse({"detail": "请选择 JPG、PNG 或 WebP 照片"}, status_code=415)
-            if not upload and content_type != "application/json":
+            if importing and content_type not in {"application/zip", "application/x-zip-compressed", "application/octet-stream"}:
+                return JSONResponse({"detail": "请选择 FRAME 作品 ZIP"}, status_code=415)
+            if not upload and not importing and content_type != "application/json":
                 return JSONResponse({"detail": "请求必须使用 JSON"}, status_code=415)
             try:
                 length = int(request.headers.get("content-length", "0"))
             except ValueError:
                 return JSONResponse({"detail": "无效请求长度"}, status_code=400)
-            if length > (MAX_UPLOAD if upload else 32768):
+            if length > (MAX_UPLOAD if upload else MAX_PACKAGE if importing else 32768):
                 return JSONResponse({"detail": "请求内容过大"}, status_code=413)
-            if not upload:
+            if not upload and not importing:
                 body = bytearray()
                 async for chunk in request.stream():
                     body.extend(chunk)
@@ -164,6 +170,44 @@ def create_app(data_dir=None):
     def project(pid: str):
         return get_project(pid)
 
+    @app.post("/api/projects/import", status_code=201)
+    async def project_import(request: Request):
+        if not import_lock.acquire(blocking=False):
+            raise HTTPException(429, "另一份作品正在导入，请稍后再试。")
+        try:
+            with tempfile.TemporaryDirectory(prefix="package-upload-",dir=store.directory) as temporary:
+                path=Path(temporary)/"upload.zip"
+                size=0
+                with path.open("wb") as output:
+                    async for chunk in request.stream():
+                        size+=len(chunk)
+                        if size>MAX_PACKAGE:
+                            raise HTTPException(413, "作品包不能超过 350 MB")
+                        output.write(chunk)
+                try:
+                    return await run_in_threadpool(import_package,store,path)
+                except ValueError as exc:
+                    raise HTTPException(400, str(exc)) from exc
+        finally:
+            import_lock.release()
+
+    @app.get("/api/projects/{pid}/package.zip")
+    def project_package(pid: str):
+        project=get_project(pid)
+        temporary=tempfile.mkdtemp(prefix="project-export-",dir=store.directory)
+        path=Path(temporary)/"frame-project.zip"
+        try:
+            with upload_lock:
+                export_package(store,project,path)
+        except ValueError as exc:
+            shutil.rmtree(temporary,ignore_errors=True)
+            raise HTTPException(400, str(exc)) from exc
+        except Exception:
+            shutil.rmtree(temporary,ignore_errors=True)
+            raise
+        return FileResponse(path,media_type="application/zip",filename="frame-project.zip",
+                            background=BackgroundTask(shutil.rmtree,temporary,ignore_errors=True))
+
     @app.post("/api/projects/{pid}/duplicate", status_code=201)
     def duplicate_project(pid: str, request: VersionRequest):
         original = get_project(pid)
@@ -173,8 +217,9 @@ def create_app(data_dir=None):
         project.update(id=str(uuid4()), title=original["title"][:27]+" · 副本", version=1,
                        archived=False, created_at=now(), updated_at=now())
         source = store.directory / "assets" / original["id"]
-        if source.is_dir():
-            shutil.copytree(source, store.directory / "assets" / project["id"])
+        with upload_lock:
+            if source.is_dir():
+                shutil.copytree(source, store.directory / "assets" / project["id"])
         store.save_project(project)
         return project
 
