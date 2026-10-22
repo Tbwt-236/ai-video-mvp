@@ -15,7 +15,7 @@ import importlib.metadata
 import pathlib
 import re
 import sys
-requirements=pathlib.Path(sys.argv[1]).read_text()
+requirements=pathlib.Path(sys.argv[1]).read_text(encoding='utf-8')
 problems=[]
 for name,expected in re.findall(r'^([A-Za-z0-9_-]+)==([^\\s]+)$',requirements,re.M):
     try:actual=importlib.metadata.version(name)

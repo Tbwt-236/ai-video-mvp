@@ -7,7 +7,7 @@ import doctor
 
 def test_dependency_check_detects_version_mismatch_without_installing(tmp_path,monkeypatch):
     monkeypatch.setattr(bootstrap,"ROOT",tmp_path)
-    (tmp_path/"requirements.txt").write_text("fastapi==0.0.0\n")
+    (tmp_path/"requirements.txt").write_text("fastapi==0.0.0\n",encoding="utf-8")
     result=bootstrap.dependency_probe(sys.executable)
     assert result.returncode==1 and "fastapi" in result.stdout and "0.0.0" in result.stdout
     assert not (tmp_path/".venv").exists()

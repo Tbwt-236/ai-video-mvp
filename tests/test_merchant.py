@@ -135,7 +135,7 @@ def test_narrated_export_sync_materials_and_snapshot(studio, monkeypatch, music)
     frames.close()
     assert metadata["duration"] == pytest.approx(job["duration"], abs=.08)
     assert metadata["audio_codec"] == "aac"
-    srt = (output / "subtitles.srt").read_text()
+    srt = (output / "subtitles.srt").read_text(encoding="utf-8")
     assert "00:00:00,300 --> 00:00:02,530" in srt
     assert "00:00:03,133 --> 00:00:05,363" in srt
     snapshot = client.get(f"/api/jobs/{job['id']}/materials/storyboard.json").json()

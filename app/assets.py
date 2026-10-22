@@ -55,8 +55,14 @@ def list_photos(directory):
         try:
             with Image.open(path) as photo:
                 width, height = photo.size
-            info = json.loads(path.with_suffix(".json").read_text()) if path.with_suffix(".json").is_file() else {}
-            photos.append({"asset_id": path.stem, "name": info.get("name", "门店照片"),
+            label="门店照片"
+            try:
+                info=json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
+                if isinstance(info,dict) and isinstance(info.get("name"),str):
+                    label=" ".join(info["name"].split())[:80] or label
+            except (OSError,ValueError):
+                pass
+            photos.append({"asset_id": path.stem, "name": label,
                            "width": width, "height": height, "bytes": path.stat().st_size})
         except (OSError, ValueError):
             continue
