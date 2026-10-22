@@ -133,6 +133,10 @@ class VoicePreview(BaseModel):
         return value.strip()
 
 
+class ShowcaseRequest(BaseModel):
+    aspect: Literal["9:16", "16:9", "1:1"] = "9:16"
+
+
 class MerchantBrief(MerchantProfile):
     style: Literal["cinema", "editorial", "tech"] = "editorial"
     aspect: Literal["9:16", "16:9", "1:1"] = "9:16"

@@ -94,6 +94,8 @@ def import_package(store, path):
                                mode="template",prompt=str(raw.get("prompt", "导入的作品"))[:800],
                                example=raw.get("example") is True,imported=True,archived=False,
                                created_at=now(),updated_at=now(),duration=sum(s["duration"] for s in project["scenes"]))
+                if raw.get("example_assets")=="ai":
+                    project.update(example_assets="ai",demo_note="含 AI 演示照片，请用真实门店素材替换后再正式宣传。")
                 destination=store.directory/"assets"/project["id"]
                 destination.parent.mkdir(exist_ok=True)
                 staging.rename(destination)

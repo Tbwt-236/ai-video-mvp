@@ -49,6 +49,7 @@
         <div class="editor-column">
           <section class="panel brief-panel" id="brief-panel">
             <div class="section-title"><h2><svg><use href="#i-spark"/></svg>从你的小店开始</h2><span>SHOP STORIES</span></div>
+            <div id="showcase-section" class="showcase-section" hidden><div class="showcase-heading"><b>还没素材？先试做一支。</b><small>AI 演示照片 · 虚构门店</small></div><div id="showcase-options" class="showcase-options"></div><p>选择示例即创建可编辑作品。示例照片仅供体验，正式宣传请换成真实门店素材。</p></div>
             <form id="brief-form">
               <div class="brief-tabs" role="group" aria-label="创作类型"><button type="button" data-brief="merchant" class="selected" aria-pressed="true">商家宣传</button><button type="button" data-brief="creative" aria-pressed="false">自由创意</button></div>
               <div id="merchant-fields">
@@ -61,7 +62,7 @@
                   <label>店名<input id="merchant-store-name" maxlength="24" required placeholder="例如：你的咖啡店名"></label>
                   <label>这次主推什么<input id="merchant-product" maxlength="32" required placeholder="例如：桂花拿铁"></label>
                   <label class="full">一个值得到店的理由<input id="merchant-selling-point" maxlength="48" required placeholder="写真实特色，例如：店里有临窗座位，适合午后休息"></label>
-                  <label class="full">活动信息 <small>可选</small><input id="merchant-offer" maxlength="40" placeholder="没有活动可留空；有活动请写清优惠和期限"></label>
+                  <label class="full">活动信息 <small id="offer-requirement">可选</small><input id="merchant-offer" maxlength="40" placeholder="没有活动可留空；有活动请写清优惠和期限"></label>
                   <label class="full">门店地址<input id="merchant-address" maxlength="48" required placeholder="城市、街道和门牌，方便顾客找到你"></label>
                   <label class="full">想邀请顾客做什么<input id="merchant-cta" maxlength="32" required value="欢迎到店，喝一杯喜欢的咖啡。"></label>
                 </div>
@@ -89,11 +90,12 @@
           <section id="storyboard-panel" class="panel" hidden>
             <div class="section-title"><h2><svg><use href="#i-film"/></svg>让故事，有自己的节奏</h2><span id="save-status">已保存</span></div>
             <div class="board-heading"><label class="field-label" for="project-title">作品名称</label><input id="project-title" maxlength="32" required><div class="board-meta"><span id="board-source"></span><span id="board-total"></span></div></div>
+            <p id="demo-disclosure" class="demo-disclosure" hidden></p>
             <div class="board-settings"><label>风格<select id="board-style"><option value="cinema">日落电影感</option><option value="editorial">自然编辑风</option><option value="tech">未来科技感</option></select></label><label>画幅<select id="board-aspect"><option>9:16</option><option>16:9</option><option>1:1</option></select></label></div>
             <div class="brand-controls"><label><input type="checkbox" id="custom-color"> 使用品牌强调色</label><input type="color" id="accent-color" value="#c2d69b" aria-label="品牌强调色"></div>
             <div id="merchant-summary" class="merchant-summary" hidden><div><b id="merchant-summary-name"></b><small id="merchant-summary-detail"></small></div><button id="edit-merchant" class="text-button">门店资料</button><button id="reuse-merchant" class="text-button">用资料再做一支</button></div>
             <div id="draft-banner" class="draft-banner" hidden><span id="draft-message"></span><button id="restore-draft" class="text-button">恢复草稿</button><button id="discard-draft" class="text-button">丢弃草稿</button></div>
-            <div class="editor-toolbar"><button id="add-scene" class="secondary">＋ 新增分镜</button><button id="save-top" class="secondary">保存</button><button id="backup-project" class="secondary">备份作品包</button><button id="undo-edit" class="secondary" disabled>↶ 撤销</button><button id="redo-edit" class="secondary" disabled>↷ 重做</button><label class="secondary batch-upload">批量上传照片<input type="file" id="batch-photos" accept="image/jpeg,image/png,image/webp" multiple aria-label="批量上传门店照片"></label></div>
+            <div class="editor-toolbar"><button id="add-scene" class="secondary">＋ 新增分镜</button><button id="save-top" class="secondary">保存</button><button id="fork-draft" class="secondary" title="将当前草稿保存为独立作品，适合制作不同版本或保留冲突草稿">另存副本</button><button id="backup-project" class="secondary">备份作品包</button><button id="undo-edit" class="secondary" disabled>↶ 撤销</button><button id="redo-edit" class="secondary" disabled>↷ 重做</button><label class="secondary batch-upload">批量上传照片<input type="file" id="batch-photos" accept="image/jpeg,image/png,image/webp" multiple aria-label="批量上传门店照片"></label></div>
             <p class="generation-note" id="editing-note">1–8 个分镜 · 总时长不超过 60 秒 · 修改自动暂存为本机草稿</p>
             <div id="scenes" class="scenes"></div>
             <div id="save-error" class="error-box" role="alert" hidden></div>

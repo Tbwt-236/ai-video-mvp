@@ -266,6 +266,8 @@ def render(project, directory, music, progress, asset_dir=None, narration=False,
         copy_text = project["title"] + "\n\n" + "\n".join(s["caption"] for s in project["scenes"])
         if project.get("example"):
             copy_text = "【虚构演示，请替换门店信息后再发布】\n" + copy_text
+        if project.get("example_assets") == "ai":
+            copy_text = "【含 AI 演示照片，正式宣传请替换为真实门店素材】\n" + copy_text
         (directory/"post.txt").write_text(copy_text, encoding="utf-8")
         return {"duration": round(duration, 3), "width":w, "height":h}
     finally:

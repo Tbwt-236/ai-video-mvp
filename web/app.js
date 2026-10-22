@@ -75,7 +75,7 @@ function setStep(step) {
 }
 
 function canLeave() {
-  if (state.uploading || state.saving || state.importing) { toast("请等待上传、导入或保存完成。", true); return false; }
+  if (state.uploading || state.saving || state.importing || state.creating) { toast("请等待当前作品操作完成。", true); return false; }
   if (state.dirty) persistDraft();
   return true;
 }
@@ -192,6 +192,8 @@ function displayBoard() {
   $("#brief-panel").hidden = true; $("#storyboard-panel").hidden = false;
   $("#project-title").value = p.title; $("#board-style").value = p.style; $("#board-aspect").value = p.aspect;
   $("#board-source").textContent = p.source === "merchant_template" ? (p.example ? "◈ 虚构门店示例" : "◈ 门店信息模板") : p.source === "deepseek" ? "✳ DeepSeek AI 分镜" : "◈ 本地模板 · 可自由编辑";
+  $("#demo-disclosure").hidden=p.example_assets!=="ai";
+  $("#demo-disclosure").textContent=p.example_assets==="ai" ? "AI 演示照片 · 虚构门店。示例将同一张照片用于不同镜头，正式宣传请换成真实门店照片与信息。" : "";
   $("#save-status").textContent = "已保存至本地";
   renderMerchantSummary();
   showError("#save-error"); showError("#export-error");
@@ -334,7 +336,7 @@ async function saveBoard() {
     renderScenes(); updateBoardTotal(); showScene(Math.min(state.scene,project.scenes.length-1)); resetExport();
     showError("#save-error"); await refreshProjects();
     return true;
-  } catch(error) { showError("#save-error",error.message); return false; }
+  } catch(error) { showError("#save-error",error.message + (error.message.includes("其他窗口") ? " 当前草稿仍在，可点击「另存副本」保留这一版。":"")); return false; }
   finally {
     state.saving = false;
     $$("#storyboard-panel input, #storyboard-panel textarea, #storyboard-panel select, #save-board").forEach(el => el.disabled = false);
@@ -487,9 +489,12 @@ async function pollJob(id) {
 
 $("#brief-form").addEventListener("submit",async event=> {
   event.preventDefault();
+  if(state.creating)return;
   const prompt = $("#prompt").value.trim();
   if (state.briefKind === "creative" && prompt.length<5) { showError("#form-error","请至少输入 5 个字的创意描述。"); return; }
   const serial = ++state.serial;
+  state.creating=true;
+  $$("[data-showcase]").forEach(el=>el.disabled=true);
   $("#generate").disabled = true; $("#generate").classList.add("loading");
   $("#generate span").textContent = $("#generation-mode").value === "ai" ? "AI 正在编写故事…" : "正在编排分镜…";
   showError("#form-error");
@@ -504,7 +509,7 @@ $("#brief-form").addEventListener("submit",async event=> {
     state.current = project; state.dirty = false; state.scene = 0; state.job = null;
     displayBoard(); renderRecent(); toast("分镜已生成并保存，可以开始打磨故事了。");
   } catch (error) { if (serial === state.serial) showError("#form-error",error.message); }
-  finally { if (serial === state.serial) { $("#generate").disabled = false; $("#generate").classList.remove("loading"); $("#generate span").textContent = "生成我的分镜"; } }
+  finally { state.creating=false;$$("[data-showcase]").forEach(el=>el.disabled=false);if (serial === state.serial) { $("#generate").disabled = false; $("#generate").classList.remove("loading"); $("#generate span").textContent = "生成我的分镜"; } }
 });
 
 $("#prompt").addEventListener("input",()=> { $("#prompt-count").textContent = `${$("#prompt").value.length} / 800`; showError("#form-error"); });
@@ -532,6 +537,22 @@ document.addEventListener("click",event=> {
 });
 $("#save-board").addEventListener("click",async()=> { if(await saveBoard())toast("分镜已保存，预览已更新。"); });
 $("#save-top").addEventListener("click",async()=> { if(await saveBoard())toast("分镜已保存，预览已更新。"); });
+$("#fork-draft").addEventListener("click",async()=>{
+  if(!state.current || state.saving || state.uploading)return;
+  try {
+    const id=state.current.id,body=readEdit();state.saving=true;
+    $$("#storyboard-panel input,#storyboard-panel textarea,#storyboard-panel select").forEach(el=>el.disabled=true);
+    const copy=await api(`/api/projects/${id}/fork`,{method:"POST",body:JSON.stringify(body)});
+    state.saving=false;
+    // The draft is safe in the new project; keep the original's saved version.
+    state.dirty=false;persistDraft();state.current=copy;state.scene=0;state.job=null;
+    clearTimeout(state.poll);stopPreview();stopVoice();displayBoard();setPage("studio");
+    state.assets=await api(`/api/projects/${copy.id}/assets`);
+    await refreshProjects();
+    toast("当前草稿已另存为独立副本。");
+  } catch(error){showError("#save-error",error.message);}
+  finally {state.saving=false;$$("#storyboard-panel input,#storyboard-panel textarea,#storyboard-panel select").forEach(el=>el.disabled=false);}
+});
 $("#export-video").addEventListener("click",async()=> {
   if(!state.current || state.exporting)return;
   state.exporting=true;
@@ -622,6 +643,8 @@ async function init(){
     const [config,,health]=await Promise.all([api("/api/config"),refreshProjects(),api("/api/health")]);
     state.config=config;
     setupMerchantCatalog();
+    $("#showcase-section").hidden=!config.showcases?.length;
+    $("#showcase-options").innerHTML=(config.showcases||[]).map(item=>`<button type="button" data-showcase="${item.id}" class="showcase-card"><img src="${item.image}" alt="${esc(item.title)} AI 演示照片" loading="lazy"><span>${esc(item.title)} <i>↗</i></span><small>${esc(item.description)}</small></button>`).join("");
     $("#narration").disabled = !config.narration_available;
     $("#narration").checked = config.narration_available;
     $("#narration-note").textContent = config.narration_note + "。开启后自动延长过短镜头，最长 120 秒。";
@@ -642,6 +665,22 @@ function setBriefKind(kind) {
   $$("[data-brief]").forEach(el => { el.classList.toggle("selected", el.dataset.brief === kind); el.setAttribute("aria-pressed", el.dataset.brief === kind); });
   $("#generation-note").textContent = kind === "merchant" ? "门店模板 · 无需密钥 · 信息只保存在本机" : "本地模板可自由修改；选择 AI 时会将创意发送至 DeepSeek。";
 }
+$("#showcase-options").addEventListener("click",async event=>{
+  const button=event.target.closest("[data-showcase]");
+  if(!button || !canLeave())return;
+  state.creating=true;
+  $$("[data-showcase],#generate").forEach(el=>el.disabled=true);showError("#form-error");
+  try {
+    const project=await api(`/api/showcases/${button.dataset.showcase}`,{method:"POST",body:JSON.stringify({aspect:state.aspect})});
+    state.creating=false;state.current=project;state.dirty=false;state.scene=0;state.job=null;
+    clearTimeout(state.poll);stopPreview();displayBoard();setPage("studio");
+    state.assets=await api(`/api/projects/${project.id}/assets`);
+    await refreshProjects();
+    toast("示例已就绪，可以直接预览、编辑或导出。");
+    $("#storyboard-panel").scrollIntoView({behavior:"smooth",block:"start"});
+  } catch(error){showError(state.current ? "#save-error":"#form-error",error.message);}
+  finally {state.creating=false;$$("[data-showcase],#generate").forEach(el=>el.disabled=false);}
+});
 $(".brief-tabs").addEventListener("click", event => { const button = event.target.closest("[data-brief]"); if (button) setBriefKind(button.dataset.brief); });
 $("#merchant-example").addEventListener("click", () => {
   const category=industry();if(!category)return;
@@ -682,6 +721,7 @@ function updateScenario() {
   $("#merchant-category-title").textContent=`${category.label} · ${scenario.label}`;
   $("#scenario-note").textContent=scenario.description;
   $("#merchant-offer").required=scenario.id==="offer";
+  $("#offer-requirement").textContent=scenario.id==="offer" ? "活动宣传必填" : "可选";
 }
 function renderMerchantReuse() {
   const select=$("#merchant-reuse"),selected=select.value,seen=new Set();

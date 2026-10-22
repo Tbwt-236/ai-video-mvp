@@ -21,7 +21,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.concurrency import run_in_threadpool
 from starlette.background import BackgroundTask
 
-from .models import Brief, MerchantBrief, PreviewRequest, ProjectEdit, ProjectState, RenderRequest, VersionRequest, VoicePreview
+from .models import Brief, MerchantBrief, PreviewRequest, ProjectEdit, ProjectState, RenderRequest, VersionRequest, VoicePreview, ShowcaseRequest
 from .assets import MAX_UPLOAD, list_photos, photo_path, save_photo
 from .merchant import catalog as merchant_catalog, merchant_storyboard
 from .narration import NarrationError, available as narration_available, synthesize
@@ -29,6 +29,7 @@ from .renderer import ROOT, font, render, scene_image, run_ffmpeg
 from .process import RenderCancelled
 from .checks import export_check
 from .portability import MAX_PACKAGE, export_package, import_package
+from .showcases import available_showcases, build_showcase, showcase_photo
 from .store import Store, now
 from .storyboard import EXAMPLES, generate_storyboard, offline_storyboard
 
@@ -121,6 +122,7 @@ def create_app(data_dir=None):
     def config():
         return {"ai_available": bool(os.getenv("DEEPSEEK_API_KEY", "").strip()),
                 "examples": EXAMPLES, "merchant_catalog": merchant_catalog(),
+                "showcases": available_showcases(),
                 "renderer": "门店照片短片 · H.264 MP4 · 720p / 1080p · 24 fps",
                 "narration_available": narration_available(),
                 "narration_note": "本机中文语音 · 朗读画面字幕" if narration_available() else "本机未提供中文配音，仍可导出照片、字幕与音乐"}
@@ -134,6 +136,27 @@ def create_app(data_dir=None):
             return {"status": "ok", "ffmpeg": version}
         except Exception:
             return JSONResponse({"status": "error", "detail": "字体或 FFmpeg 不可用，请重新安装依赖。"}, status_code=503)
+
+    @app.get("/showcase/{key}.png")
+    def sample_photo(key: str):
+        path=showcase_photo(key)
+        if path is None:
+            raise HTTPException(404, "找不到这份演示素材")
+        return FileResponse(path,media_type="image/png",headers={"Cache-Control":"public, max-age=3600"})
+
+    @app.post("/api/showcases/{key}", status_code=201)
+    def sample_project(key: str, request: ShowcaseRequest):
+        try:
+            with upload_lock:
+                project=build_showcase(key,store.directory,request.aspect)
+        except ValueError as exc:
+            raise HTTPException(400,str(exc)) from exc
+        try:
+            store.save_project(project)
+        except Exception:
+            shutil.rmtree(store.directory/"assets"/project["id"],ignore_errors=True)
+            raise
+        return project
 
     @app.post("/api/narration/preview")
     def voice_preview(request: VoicePreview):
@@ -213,8 +236,14 @@ def create_app(data_dir=None):
         original = get_project(pid)
         if original["version"] != request.version:
             raise HTTPException(409, "作品已更新，请重新打开后复制。")
+        return save_copy(original)
+
+    def save_copy(original, changes=None):
         project = copy.deepcopy(original)
-        project.update(id=str(uuid4()), title=original["title"][:27]+" · 副本", version=1,
+        if changes:
+            project.update(changes)
+        project.update(id=str(uuid4()), title=project["title"][:27]+" · 副本", version=1,
+                       duration=sum(scene["duration"] for scene in project["scenes"]),
                        archived=False, created_at=now(), updated_at=now())
         source = store.directory / "assets" / original["id"]
         with upload_lock:
@@ -222,6 +251,19 @@ def create_app(data_dir=None):
                 shutil.copytree(source, store.directory / "assets" / project["id"])
         store.save_project(project)
         return project
+
+    @app.post("/api/projects/{pid}/fork", status_code=201)
+    def fork_draft(pid: str, edit: ProjectEdit):
+        original=get_project(pid)
+        for scene in edit.scenes:
+            if scene.asset_id and photo_path(store.directory/"assets"/original["id"],scene.asset_id) is None:
+                raise HTTPException(400, "草稿中的照片不可读取，请重新上传后再另存。")
+        changes=edit.model_dump(exclude={"version"})
+        if "merchant" not in edit.model_fields_set:
+            changes.pop("merchant",None)
+        # An older base version is deliberately allowed: this saves a separate draft
+        # without replacing the newer project another window has already saved.
+        return save_copy(original,changes)
 
     @app.post("/api/projects/{pid}/archive")
     def archive_project(pid: str, request: ProjectState):
