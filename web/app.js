@@ -106,7 +106,7 @@ function newProject() {
   $("#timeline").innerHTML = "<span></span><span></span><span></span>";
   $("#export-video").disabled = true; $("#export-video").hidden = false;
   $("#export-video span").textContent = "导出视频";
-  $("#download-actions").hidden = true; $("#job-progress").hidden = true;
+  $("#download-actions").hidden = true; $("#job-progress").hidden = true;$("#artifact-warning").hidden=true;
   $("#export-note").textContent = "生成分镜，距离成片再近一步";
   $("#generate").disabled = false; $("#generate").classList.remove("loading");
   $("#generate span").textContent = "生成我的分镜";
@@ -317,6 +317,7 @@ function markDirty({record=true,force=false}={}) {
   updateAudioControls();
   $("#save-status").textContent=state.dirty ? "已暂存草稿 · 待保存":"已保存至本地";
   $("#draft-banner").hidden=true;persistDraft();
+  $("#artifact-warning").hidden=true;
   $("#download-actions").hidden=true;$("#export-video").hidden=false;$("#export-video").disabled=false;
   $("#export-video span").textContent=state.dirty ? "保存并导出视频":"导出视频";
   $("#export-note").textContent="导出将使用最新保存的分镜";
@@ -483,6 +484,7 @@ function showPreflight(result) {
   if(!result.ready)$("#preflight-panel").open=true;
 }
 function resetExport() {
+  $("#artifact-warning").hidden=true;
   $("#download-actions").hidden = true; $("#job-progress").hidden = true;
   $("#export-video").hidden = false; $("#export-video").disabled = !state.current;
   $("#export-video span").textContent = "导出视频";
@@ -492,6 +494,7 @@ function resetExport() {
 
 function handleJob(job, historical=false) {
   if (state.current?.id !== job.project_id) return;
+  $("#artifact-warning").hidden=true;
   state.job = job;
   const current = job.version === state.current.version && !state.dirty && settingsMatch(job);
   if (!current && !historical) { resetExport(); return; }
@@ -505,6 +508,7 @@ function handleJob(job, historical=false) {
     $("#export-note").textContent = "可继续浏览作品，重新打开会恢复任务进度";
     clearTimeout(state.poll); state.poll = setTimeout(()=>pollJob(job.id),1200);
   } else if (job.status === "completed") {
+    const missing=new Set(job.missing_files || []);
     clearTimeout(state.previewTimer);state.previewController?.abort();state.previewRevision++;
     clearTimeout(state.poll); stopPreview(); setStep(3);
     $("#job-progress").hidden = true; $("#export-video").hidden = true; $("#download-actions").hidden = false;
@@ -522,11 +526,26 @@ function handleJob(job, historical=false) {
     $("#scene-preview").hidden = true; $("#sample-poster").hidden = true; $("#final-video").hidden = false;
     $(".preview-transport").hidden = true; $("#timeline").hidden = true;
     const videoUrl = `/api/jobs/${job.id}/video.mp4`;
-    $("#final-video").poster = job.materials ? `/api/jobs/${job.id}/materials/cover.png` : previewUrl(state.current,0);
-    if ($("#final-video").getAttribute("src") !== videoUrl) { $("#final-video").src = videoUrl; $("#final-video").load(); }
+    if(!missing.has("cover.png"))$("#final-video").poster = job.materials ? `/api/jobs/${job.id}/materials/cover.png` : previewUrl(state.current,0);
+    if (!missing.has("video.mp4") && $("#final-video").getAttribute("src") !== videoUrl) { $("#final-video").src = videoUrl; $("#final-video").load(); }
     $("#preview-badge").textContent = historical && !current ? `历史版本 ${job.version}` : "成片就绪";
     $("#preview-hint").textContent = "使用播放器查看实际成片，支持全屏播放";
     showError("#export-error");
+    $("#download-mp4").hidden=missing.has("video.mp4");
+    $("#download-srt").hidden=missing.has("subtitles.srt");
+    $("#download-json").hidden=missing.has("storyboard.json");
+    $("#download-cover").hidden=!job.materials || missing.has("cover.png");
+    $("#download-post").hidden=!job.materials || missing.has("post.txt");
+    if(missing.size){
+      $("#download-bundle").hidden=true;$("#publish-open").hidden=true;
+      const labels={"video.mp4":"视频","subtitles.srt":"字幕","cover.png":"封面","post.txt":"文案","storyboard.json":"分镜快照"};
+      $("#artifact-message").textContent=`这次成片的${[...missing].map(name=>labels[name] || name).join("、")}文件缺失或为空。其余文件仍可下载。重新导出会按当前分镜与设置生成一套新素材。`;
+      $("#artifact-warning").hidden=false;
+      if(missing.has("video.mp4")){
+        $("#final-video").pause();$("#final-video").removeAttribute("src");showScene(state.scene);
+        $("#preview-hint").textContent="成片视频缺失，当前显示可继续编辑的分镜。";
+      } else if(missing.has("cover.png"))$("#final-video").removeAttribute("poster");
+    }
   } else if(job.status==="cancelled") {
     clearTimeout(state.poll);resetExport();showError("#export-error");
     $("#export-note").textContent="本次导出已取消，作品和照片已保留。";refreshHistory();
@@ -714,6 +733,10 @@ $("#export-video").addEventListener("click",async()=> {
     if(state.current?.id===id)handleJob(job);
   } catch(error){showError("#export-error",error.message);$("#export-video").disabled=false;}
   finally{state.exporting=false;}
+});
+$("#repair-export").addEventListener("click",()=>{
+  if(state.exporting || !state.current)return;
+  resetExport();$("#export-video").click();
 });
 for (const control of [$("#music"), $("#narration"),$("#quality"),$("#speech-rate"),$("#music-volume"),$("#music-style")]) control.addEventListener("change",async()=> {
   stopVoice();updateAudioControls();clearPreflight();
@@ -959,7 +982,7 @@ async function uploadFiles(files, target=null) {
   finally {
     state.uploading--;$("#batch-photos").value="";
     $("#editing-note").textContent="1–8 个分镜 · 总时长不超过 60 秒 · 修改自动暂存为本机草稿";
-    try { state.assets=await api(`/api/projects/${id}/assets`); } catch(error){toast(error.message,true);}
+    try { const assets=await api(`/api/projects/${id}/assets`);if(state.current?.id===id)state.assets=assets; } catch(error){if(state.current?.id===id)toast(error.message,true);}
   }
 }
 $("#scenes").addEventListener("change", event=>{
@@ -1044,7 +1067,7 @@ $("#library-grid").addEventListener("click",async event=>{
 });
 function renderHistory(jobs) {
   $("#history-count").textContent=jobs.length;$("#history-panel").hidden=!jobs.length;
-  $("#history-list").innerHTML=jobs.slice(0,12).map(job=>`<div class="history-item"><div><b>版本 ${job.version} · ${Number(Number(job.duration || 0).toFixed(1))} 秒</b><small>${new Date(job.created_at).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} · ${job.quality || "720p"} · ${job.narration ? "中文配音":"无配音"}${job.music ? " · 音乐":""}</small></div>${job.status==="completed" ? `<button data-history-job="${job.id}">查看</button>` : `<span>${esc(({failed:"失败",queued:"等待中",rendering:"合成中",cancelling:"取消中",cancelled:"已取消"})[job.status] || job.status)}</span>`}</div>`).join("");
+  $("#history-list").innerHTML=jobs.slice(0,12).map(job=>`<div class="history-item"><div><b>版本 ${job.version} · ${Number(Number(job.duration || 0).toFixed(1))} 秒</b><small>${new Date(job.created_at).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} · ${job.quality || "720p"} · ${job.narration ? "中文配音":"无配音"}${job.music ? " · 音乐":""}${job.missing_files?.length ? " · 素材缺失":""}</small></div>${job.status==="completed" ? `<button data-history-job="${job.id}">查看</button>` : `<span>${esc(({failed:"失败",queued:"等待中",rendering:"合成中",cancelling:"取消中",cancelled:"已取消"})[job.status] || job.status)}</span>`}</div>`).join("");
 }
 async function refreshHistory(){
   if(!state.current)return;const id=state.current.id;
@@ -1073,7 +1096,7 @@ async function refreshQueue() {
     $("#queue-list").innerHTML=result.jobs.length ? result.jobs.map(job=>{
       const active=["queued","rendering","cancelling"].includes(job.status);
       const title=job.title || "历史作品";
-      return `<article class="queue-item"><div class="queue-item-title"><b>${esc(title)}</b><span class="${job.status}">${status[job.status] || esc(job.status)}</span></div><small>${esc(job.aspect || "")} · ${job.quality || "720p"} · 版本 ${job.version} · ${new Date(job.created_at).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</small>${active ? `<progress max="100" value="${job.progress || 0}" aria-label="${esc(title)}导出进度"></progress><p>${esc(job.queue_position ? "排队第 "+job.queue_position+" 位" : job.message || "处理中")} · ${job.progress || 0}%</p>` : job.status==="failed" ? `<p class="queue-failure">${esc(job.error || "导出失败，请打开作品后重试。")}</p>` : ""}<div class="queue-item-actions"><button data-queue-action="open" data-job="${job.id}">${job.status==="completed" ? "查看成片":"打开作品"}</button>${active ? `<button data-queue-action="cancel" data-job="${job.id}" ${job.status==="cancelling" ? "disabled":""}>取消导出</button>` : job.status==="completed" ? `<a href="/api/jobs/${job.id}/video.mp4?download=true" download>下载 MP4</a>` : ""}</div></article>`;
+      return `<article class="queue-item"><div class="queue-item-title"><b>${esc(title)}</b><span class="${job.status}">${job.missing_files?.length ? "素材缺失":status[job.status] || esc(job.status)}</span></div><small>${esc(job.aspect || "")} · ${job.quality || "720p"} · 版本 ${job.version} · ${new Date(job.created_at).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</small>${active ? `<progress max="100" value="${job.progress || 0}" aria-label="${esc(title)}导出进度"></progress><p>${esc(job.queue_position ? "排队第 "+job.queue_position+" 位" : job.message || "处理中")} · ${job.progress || 0}%</p>` : job.status==="failed" ? `<p class="queue-failure">${esc(job.error || "导出失败，请打开作品后重试。")}</p>` : ""}<div class="queue-item-actions"><button data-queue-action="open" data-job="${job.id}">${job.status==="completed" ? "查看成片":"打开作品"}</button>${active ? `<button data-queue-action="cancel" data-job="${job.id}" ${job.status==="cancelling" ? "disabled":""}>取消导出</button>` : job.status==="completed" && !job.missing_files?.includes("video.mp4") ? `<a href="/api/jobs/${job.id}/video.mp4?download=true" download>下载 MP4</a>` : ""}</div></article>`;
     }).join("") : '<p class="empty-queue">还没有导出记录，完成分镜后试试「导出视频」。</p>';
     showError("#queue-error");
   } catch(error){if($("#queue-dialog").open)showError("#queue-error",error.message);}

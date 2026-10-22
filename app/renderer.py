@@ -56,6 +56,13 @@ def text_block(draw, text, x, y, width, height, size, fill):
         y += int(size * 1.48)
 
 
+def readable_accent(accent, light):
+    # A saturated blue/purple can have a high RGB sum and still look very dark.
+    linear = [c/255/12.92 if c/255 <= .04045 else ((c/255+.055)/1.055)**2.4 for c in accent]
+    luminance = sum(c*weight for c,weight in zip(linear,(.2126,.7152,.0722)))
+    return accent if luminance >= .3 else light
+
+
 def scene_layers(project, index, size=None, asset_dir=None):
     w, h = size or SIZES[project["aspect"]]
     scene = project["scenes"][index]
@@ -134,14 +141,14 @@ def scene_layers(project, index, size=None, asset_dir=None):
     # Typography and its readability shade stay still while the background moves.
     draw = ImageDraw.Draw(overlay)
     scale = min(w, h) / 720
+    text_accent = readable_accent(accent, light)
     brand = (project.get("merchant") or {}).get("store_name", "F R A M E   /   STUDIO")
     text_block(draw, brand, margin, margin, w-2*margin-100*scale, h*.07, max(12, int(16*scale)), light)
-    draw.text((w-margin, margin), f"{index+1:02d} / {len(project['scenes']):02d}", font=font(max(12, int(16*scale))), fill=accent, anchor="rt")
+    draw.text((w-margin, margin), f"{index+1:02d} / {len(project['scenes']):02d}", font=font(max(12, int(16*scale))), fill=text_accent, anchor="rt")
     heading_fraction = {"bottom": .565, "center": .34, "top": .16}[scene.get("text_position", "bottom")]
     heading_y = int(h*heading_fraction)
     text_block(draw, scene["heading"], margin, heading_y, w-2*margin, h*.175, int(56*scale), light)
-    caption_color = accent if sum(accent) > 250 else light
-    text_block(draw, scene["caption"], margin, int(h*(heading_fraction+.205)), w-2*margin, h*.135, int(25*scale), caption_color)
+    text_block(draw, scene["caption"], margin, int(h*(heading_fraction+.205)), w-2*margin, h*.135, int(25*scale), text_accent)
     draw.line((margin, h-margin, w-margin, h-margin), fill=mid, width=2)
     draw.line((margin, h-margin, margin+int((w-2*margin)*(index+1)/len(project["scenes"])), h-margin), fill=accent, width=3)
     return im, overlay

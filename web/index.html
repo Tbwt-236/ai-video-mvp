@@ -128,6 +128,7 @@
             <details id="preflight-panel" class="preflight-panel"><summary>导出前检查</summary><button id="check-export" class="text-button" disabled>检查当前作品</button><div id="preflight-result"><p>保存作品后，可检查照片、文字时长和导出环境。</p></div></details>
             <div id="job-progress" hidden><div class="job-line"><span id="job-message">准备导出</span><b id="job-percent">0%</b></div><progress id="progress" max="100" value="0"></progress><button id="cancel-export" class="text-button">取消本次导出</button></div>
             <div id="export-error" class="error-box" role="alert" hidden></div>
+            <div id="artifact-warning" class="artifact-warning" role="status" hidden><p id="artifact-message"></p><button id="repair-export" class="secondary wide">按当前分镜重新导出</button></div>
             <button id="export-video" class="primary wide" disabled><svg><use href="#i-download"/></svg><span>导出视频</span></button>
             <div id="download-actions" hidden><a id="download-mp4" class="primary wide" download><svg><use href="#i-download"/></svg>下载 MP4</a><button id="publish-open" class="secondary wide">发布助手 · 文案与素材</button><div class="download-secondary"><a id="download-srt" download>下载字幕</a><a id="download-json" download>导出分镜</a><a id="download-cover" download>下载封面</a><a id="download-post" download>文案 TXT</a><a id="download-bundle" download>整套素材 ZIP</a><button id="return-board-preview">查看分镜</button></div></div>
             <details id="history-panel" class="export-history" hidden><summary>历史导出 <span id="history-count"></span></summary><div id="history-list"></div></details>

@@ -36,6 +36,7 @@ from .portability import MAX_PACKAGE, export_package, import_package
 from .showcases import available_showcases, build_showcase, showcase_photo
 from .projects import copy_projects
 from .music import MUSIC_STYLES, make_music
+from .materials import MATERIAL_FILES, missing_files
 from .store import Store, now
 from .storyboard import EXAMPLES, generate_storyboard, offline_storyboard
 
@@ -128,7 +129,8 @@ def create_app(data_dir=None):
         return job
 
     def public_job(job):
-        return {k: v for k, v in job.items() if k != "snapshot"}
+        return {**{k: v for k, v in job.items() if k != "snapshot"},
+                "missing_files": missing_files(store.directory / "exports", job)}
 
     @app.get("/api/config")
     def config():
@@ -479,9 +481,9 @@ def create_app(data_dir=None):
                         and job.get("music_volume", .5) == request.music_volume
                         and job.get("music_style","ambient") == request.music_style
                         and job["status"] in ("queued", "rendering", "completed")):
-                    if job["status"] == "completed" and not (store.directory / "exports" / job["id"] / "video.mp4").is_file():
-                        job.update(status="failed", error="成片文件已丢失，请重新导出。")
-                        store.save_job(job)
+                    if missing_files(store.directory / "exports", job):
+                        # Keep remaining files and the historical snapshot available.
+                        # A fresh job rebuilds the complete set without editing the project.
                         continue
                     return public_job(job)
             if sum(j["status"] in ("queued", "rendering", "cancelling") for j in jobs) >= 3:
@@ -544,8 +546,8 @@ def create_app(data_dir=None):
         if job["status"] != "completed":
             raise HTTPException(409, "视频还未完成，请稍后重试。")
         path = store.directory / "exports" / job["id"] / "video.mp4"
-        if not path.is_file():
-            raise HTTPException(404, "成片文件不存在，请修改分镜后重新导出。")
+        if not path.is_file() or not path.stat().st_size:
+            raise HTTPException(404, "成片文件不存在，请打开作品后重新导出。")
         return FileResponse(path, media_type="video/mp4", filename="frame-video.mp4" if download else None)
 
     @app.get("/api/jobs/{jid}/subtitles.srt")
@@ -554,7 +556,7 @@ def create_app(data_dir=None):
         if job["status"] != "completed":
             raise HTTPException(409, "字幕尚未就绪")
         path=store.directory / "exports" / job["id"] / "subtitles.srt"
-        if not path.is_file():
+        if not path.is_file() or not path.stat().st_size:
             raise HTTPException(404, "字幕文件不存在，请重新导出。")
         return FileResponse(path, filename="subtitles.srt")
 
@@ -566,15 +568,15 @@ def create_app(data_dir=None):
         if job["status"] != "completed":
             raise HTTPException(409, "素材尚未就绪")
         path = store.directory / "exports" / job["id"] / name
-        if not path.is_file():
-            raise HTTPException(404, "旧版任务没有这份素材，请修改并重新导出")
+        if not path.is_file() or not path.stat().st_size:
+            raise HTTPException(404, "这份素材不存在，请打开作品后重新导出。")
         return FileResponse(path, filename=name)
 
     @app.get("/api/jobs/{jid}/storyboard.json")
     def job_storyboard(jid: str):
         job = get_job(jid)
         path = store.directory / "exports" / job["id"] / "storyboard.json"
-        if job["status"] == "completed" and path.is_file():
+        if job["status"] == "completed" and path.is_file() and path.stat().st_size:
             return FileResponse(path, filename="storyboard.json")
         if not job.get("snapshot"):
             raise HTTPException(404, "这次历史导出没有保留分镜快照。")
@@ -587,8 +589,8 @@ def create_app(data_dir=None):
         if job["status"] != "completed":
             raise HTTPException(409, "成片尚未完成，请稍后下载")
         directory = store.directory / "exports" / job["id"]
-        names = ["video.mp4", "subtitles.srt", "cover.png", "post.txt", "storyboard.json"]
-        if not all((directory / name).is_file() for name in names):
+        names = MATERIAL_FILES
+        if any(not (directory / name).is_file() or not (directory / name).stat().st_size for name in names):
             raise HTTPException(404, "素材不完整，请保存分镜并重新导出")
         path = directory / "materials.zip"
         if not path.is_file():

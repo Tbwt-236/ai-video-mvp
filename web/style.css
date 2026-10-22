@@ -2632,6 +2632,9 @@ dialog li p {
 #publish-copy { display:block;width:100%;resize:vertical;min-height:170px;max-height:38vh;background:#192016;border:1px solid #3b4732;border-radius:8px;padding:12px;color:#dce7ce;font:inherit;font-size:12px;line-height:1.8;margin:12px 0; }
 #publish-copy:focus { outline:2px solid #c2d69b;outline-offset:2px; }
 #publish-copy-note { min-height:20px; }
+.artifact-warning { margin:14px 0;padding:13px;border:1px solid #8a7850;background:#302b1d;border-radius:8px;color:#e3cda0; }
+.artifact-warning p { font-size:11px;line-height:1.8;margin:0 0 12px; }
+.artifact-warning .secondary { font-size:11px;padding:10px; }
 .remove-photo { border:0; background:none; color:#c1b6a6; cursor:pointer; font-size:11px; }
 .download-secondary { flex-wrap:wrap; row-gap:13px; }
 @media(max-width:600px) { .merchant-grid { grid-template-columns:1fr; } .merchant-intro { align-items:flex-start; } }
