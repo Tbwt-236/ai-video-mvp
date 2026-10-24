@@ -1,0 +1,81 @@
+{
+  "style": "editorial",
+  "aspect": "1:1",
+  "duration": 16.583333333333332,
+  "example": true,
+  "title": "一枝花房 · 方形产品演示",
+  "source": "merchant_template",
+  "prompt": "一枝花房（演示）：暖色系日常花束；可以沟通喜欢的颜色与预算，再选择花材搭配。；；示例城市 · 春日路 18 号（虚构地址）",
+  "merchant": {
+    "industry": "flowers",
+    "scenario": "product",
+    "store_name": "一枝花房（演示）",
+    "product": "暖色系日常花束",
+    "selling_point": "可以沟通喜欢的颜色与预算，再选择花材搭配。",
+    "offer": "",
+    "address": "示例城市 · 春日路 18 号（虚构地址）",
+    "cta": "来选一束，送给想念的人。"
+  },
+  "scenes": [
+    {
+      "heading": "暖色系日常花束",
+      "caption": "今日主推：暖色系日常花束。",
+      "voiceover": null,
+      "duration": 5,
+      "asset_id": "38782cb9a998452e84dbdb0bd43ad9f4",
+      "crop_x": 0.5,
+      "crop_y": 0.4,
+      "zoom": 1.0,
+      "photo_fit": "cover",
+      "motion": "zoom_in",
+      "text_position": "bottom",
+      "speech_duration": 2.7589115646258504
+    },
+    {
+      "heading": "让一束花，走进日常",
+      "caption": "可以沟通喜欢的颜色与预算，再选择花材搭配。",
+      "voiceover": null,
+      "duration": 5,
+      "asset_id": "38782cb9a998452e84dbdb0bd43ad9f4",
+      "crop_x": 0.5,
+      "crop_y": 0.3,
+      "zoom": 1.2,
+      "photo_fit": "cover",
+      "motion": "pan_right",
+      "text_position": "top",
+      "speech_duration": 4.347981859410431
+    },
+    {
+      "heading": "下次见，就在这里",
+      "caption": "示例城市 · 春日路 18 号（虚构地址）。来选一束，送给想念的人。",
+      "voiceover": null,
+      "duration": 6.583333333333333,
+      "asset_id": "38782cb9a998452e84dbdb0bd43ad9f4",
+      "crop_x": 0.5,
+      "crop_y": 0.5,
+      "zoom": 1.05,
+      "photo_fit": "cover",
+      "motion": "zoom_out",
+      "text_position": "bottom",
+      "speech_duration": 5.9714739229024945
+    }
+  ],
+  "id": "c2f13259-c8be-4d8f-a6ca-337257532cde",
+  "version": 2,
+  "mode": "template",
+  "created_at": "2026-10-22T17:09:43.389716+00:00",
+  "updated_at": "2026-10-22T17:10:19.214881+00:00",
+  "accent_color": "#edc4b1",
+  "cover_scene": 0,
+  "example_assets": "ai",
+  "demo_note": "虚构门店与 AI 演示照片；同一张照片在三幕中以不同构图复用。",
+  "narration": true,
+  "export_settings": {
+    "quality": "1080p",
+    "speech_rate": 210,
+    "music_volume": 0.5,
+    "music_style": "light",
+    "music": true,
+    "narration": true
+  }
+}

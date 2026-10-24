@@ -70,25 +70,29 @@ def generate_storyboard(brief: Brief):
                 json={"model": os.getenv("DEEPSEEK_MODEL", "deepseek-flash"),
                       "messages": [{"role": "system", "content": instruction},
                                    {"role": "user", "content": json.dumps(brief.model_dump(), ensure_ascii=False)}],
-                      "response_format": {"type": "json_object"}, "max_tokens": 1800},
+                      "response_format": {"type": "json_object"}, "thinking": {"type": "disabled"}, "max_tokens": 1800},
             )
         if response.status_code in (401, 403):
             raise ValueError("DeepSeek 密钥无效或无权限，请检查服务端配置。")
         if response.status_code == 429:
             raise ValueError("DeepSeek 额度不足或请求过于频繁，请稍后重试。")
         response.raise_for_status()
-        result = json.loads(response.json()["choices"][0]["message"]["content"])
-        if not isinstance(result.get("title"), str) or not 1 <= len(result["title"].strip()) <= 32:
-            raise ValueError("invalid title")
-        if len(result["scenes"]) != count:
-            raise ValueError("invalid scene count")
-        base, extra = divmod(brief.duration, count)
-        scenes = [Scene(heading=s["heading"], caption=s["caption"], duration=base + (i < extra)).model_dump()
-                  for i, s in enumerate(result["scenes"])]
-        return {"title": result["title"].strip(), "scenes": scenes, "source": "deepseek"}
     except httpx.TimeoutException as exc:
         raise ValueError("AI 编写超时，请重试或切换到本地模板。") from exc
     except httpx.HTTPError as exc:
         raise ValueError("AI 服务暂时不可用，请重试或切换到本地模板。") from exc
-    except (KeyError, TypeError, json.JSONDecodeError) as exc:
+    try:
+        choice=response.json()["choices"][0]
+        result=json.loads(choice["message"]["content"])
+        if not isinstance(result,dict) or not isinstance(result.get("title"),str) or not 1<=len(result["title"].strip())<=32:
+            raise ValueError("invalid title")
+        if not isinstance(result.get("scenes"),list) or len(result["scenes"])!=count:
+            raise ValueError("invalid scenes")
+        if choice.get("finish_reason") in {"length","content_filter"}:
+            raise ValueError("incomplete response")
+        base,extra=divmod(brief.duration,count)
+        scenes=[Scene(heading=scene["heading"],caption=scene["caption"],duration=base+(index<extra)).model_dump()
+                for index,scene in enumerate(result["scenes"])]
+        return {"title":result["title"].strip(),"scenes":scenes,"source":"deepseek"}
+    except (KeyError,IndexError,TypeError,ValueError,AttributeError) as exc:
         raise ValueError("AI 返回的分镜格式不完整，请重新生成。") from exc

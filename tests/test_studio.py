@@ -36,7 +36,7 @@ def wait_job(client, jid):
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
         job = client.get(f"/api/jobs/{jid}").json()
-        if job["status"] in ["completed", "failed"]:
+        if job["status"] in ["completed", "failed", "cancelled"]:
             return job
         time.sleep(.1)
     pytest.fail("render timed out")

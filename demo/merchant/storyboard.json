@@ -1,0 +1,46 @@
+{
+  "style": "editorial",
+  "aspect": "9:16",
+  "duration": 18.25,
+  "example": true,
+  "title": "拾光咖啡（演示） · 到店邀请",
+  "source": "merchant_template",
+  "prompt": "拾光咖啡（演示）：桂花拿铁；桂花香气，搭配柔和奶香。临窗坐坐，给午后留一点空闲。；；示例城市 · 春日路 18 号（虚构地址）",
+  "merchant": {
+    "store_name": "拾光咖啡（演示）",
+    "product": "桂花拿铁",
+    "selling_point": "桂花香气，搭配柔和奶香。临窗坐坐，给午后留一点空闲。",
+    "offer": "",
+    "address": "示例城市 · 春日路 18 号（虚构地址）",
+    "cta": "欢迎到店，喝一杯喜欢的咖啡。"
+  },
+  "scenes": [
+    {
+      "heading": "拾光咖啡（演示）",
+      "caption": "今日主推：桂花拿铁。",
+      "duration": 5,
+      "asset_id": "acae081415744335a2d20cbe4faf378c",
+      "speech_duration": 2.1319727891156464
+    },
+    {
+      "heading": "给日常，一点好滋味",
+      "caption": "桂花香气，搭配柔和奶香。临窗坐坐，给午后留一点空闲。",
+      "duration": 6.416666666666667,
+      "asset_id": null,
+      "speech_duration": 5.783265306122449
+    },
+    {
+      "heading": "下次见，就在这里",
+      "caption": "示例城市 · 春日路 18 号（虚构地址）。欢迎到店，喝一杯喜欢的咖啡。",
+      "duration": 6.833333333333333,
+      "asset_id": null,
+      "speech_duration": 6.226893424036281
+    }
+  ],
+  "mode": "template",
+  "id": "5351f69b-e4f8-4f1b-83dc-bcfc42a327d6",
+  "version": 2,
+  "created_at": "2026-10-12T09:30:23.561527+00:00",
+  "updated_at": "2026-10-12T09:36:53.118697+00:00",
+  "narration": true
+}
