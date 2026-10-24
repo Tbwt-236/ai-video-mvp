@@ -2590,6 +2590,33 @@ dialog li p {
 }
 
 .brief-tabs { display:flex; gap:8px; padding:5px; background:#141918; border-radius:10px; margin-bottom:22px; }
+.brief-assist { margin:0 0 24px;padding:16px;border:1px solid #3c4931;background:#222b1e;border-radius:10px; }
+.brief-assist-heading { display:flex;align-items:baseline;justify-content:space-between;gap:10px; }
+.brief-assist-heading b { font-size:13px;font-weight:500;color:#e0edcf; }
+.brief-assist-heading span { flex-shrink:0;font-size:11px;color:#c2d69b;font-variant-numeric:tabular-nums; }
+.brief-assist progress { display:block;appearance:none;width:100%;height:4px;margin:12px 0;border:0;border-radius:4px;background:#3b4733;overflow:hidden; }
+.brief-assist progress::-webkit-progress-bar { background:#3b4733; }
+.brief-assist progress::-webkit-progress-value { background:#c2d69b;border-radius:4px; }
+.brief-assist progress::-moz-progress-bar { background:#c2d69b; }
+.brief-assist>p { font-size:11px;line-height:1.8;color:#b5c1a8; }
+.brief-assist>.text-button { margin-top:8px;text-align:left; }
+.brief-draft-status { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;border-top:1px solid #3a4531;padding-top:10px;margin-top:12px; }
+.brief-draft-status small { color:#a1af92;font-size:10px; }
+.brief-draft-status .text-button { color:#a1af92;font-size:10px; }
+.brief-draft-status .draft-unavailable { color:#f1bf8b; }
+#sample-poster { container-type:inline-size; }
+#sample-poster .poster-copy { top:auto;bottom:48px; }
+#sample-poster .poster-copy h3 { font-size:clamp(16px,9cqw,28px);letter-spacing:1px;line-height:1.45;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden; }
+#sample-poster .poster-copy p { font-size:clamp(9px,3.5cqw,11px);line-height:1.65;letter-spacing:.3px;margin-top:10px;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden; }
+#sample-poster .poster-copy>span { font-size:9px;letter-spacing:.5px; }
+#sample-poster.placeholder-copy .poster-copy h3 { color:#c2c9ba; }
+.preview-stage[data-aspect="16:9"] #sample-poster .poster-copy { bottom:25px;left:18px;right:18px; }
+.preview-stage[data-aspect="16:9"] #sample-poster .poster-copy h3 { font-size:clamp(13px,5cqw,22px);line-height:1.3;margin-top:0;-webkit-line-clamp:2; }
+.preview-stage[data-aspect="16:9"] #sample-poster .poster-copy p { font-size:clamp(8px,2.8cqw,11px);line-height:1.4;margin-top:5px;-webkit-line-clamp:2; }
+.preview-stage[data-aspect="16:9"] #sample-poster .poster-copy>span { display:none; }
+.preview-stage[data-aspect="1:1"] #sample-poster .poster-copy { bottom:30px; }
+.preview-stage[data-aspect="1:1"] #sample-poster .poster-copy h3 { font-size:clamp(16px,7cqw,25px);-webkit-line-clamp:3; }
+.preview-stage[data-aspect="1:1"] #sample-poster .poster-copy p { -webkit-line-clamp:2; }
 .brief-tabs button { flex:1; border:0; border-radius:7px; padding:11px; color:#aab7ad; background:transparent; cursor:pointer; }
 .brief-tabs button.selected { color:#ddefb0; background:#30392c; }
 .merchant-intro { display:flex; justify-content:space-between; gap:14px; align-items:center; margin-bottom:18px; color:#cfdbbd; font-size:13px; }

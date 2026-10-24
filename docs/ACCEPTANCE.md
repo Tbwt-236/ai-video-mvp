@@ -1,5 +1,7 @@
 # V0.3 验收路线
 
+V0.3.1 的生成前填写优化与新增测试见[本轮验收记录](ONBOARDING_ACCEPTANCE.md)。下文保留 V0.3 媒体功能验收记录。
+
 目标：不依赖店主资源，直接从示例走完制作、编辑、配音、高清导出与备份。以下操作都在本地工作台完成。
 
 ## 先看已完成的作品
@@ -75,7 +77,7 @@
 
 ~~~bash
 .venv/bin/python -m pytest -q
-node --test tests/editor.test.cjs tests/http.test.cjs tests/drafts.test.cjs
+node --test tests/*.test.cjs
 node --check web/app.js
 .venv/bin/python bootstrap.py --check
 .venv/bin/python doctor.py

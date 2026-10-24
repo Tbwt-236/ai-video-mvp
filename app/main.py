@@ -109,6 +109,9 @@ def create_app(data_dir=None):
         response.headers["Referrer-Policy"] = "same-origin"
         if request.url.path.startswith("/api"):
             response.headers["Cache-Control"] = "no-store"
+        elif request.url.path == "/" or request.url.path.endswith((".html", ".js", ".css")):
+            # Local releases reuse filenames; revalidate to avoid mixing old JS with new HTML.
+            response.headers["Cache-Control"] = "no-cache"
         return response
 
     @app.exception_handler(RequestValidationError)

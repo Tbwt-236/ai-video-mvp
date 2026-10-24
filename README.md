@@ -1,10 +1,12 @@
-# FRAME 拾帧 · AI Video MVP V0.3
+# FRAME 拾帧 · AI Video MVP V0.3.1
 
 给小白商家使用的本地短视频工作台：填写门店信息、放入照片、编辑分镜，导出视频、字幕、封面和发布文案。**无需 API 密钥即可走完流程。**
 
 支持咖啡茶饮、餐饮、烘焙、美甲、宠物、花店六类门店，以及到店、产品、活动、小店介绍四种用途。没有素材也能点击咖啡、花店、烘焙一键示例体验；示例使用明确标注的虚构门店与 AI 照片。
 
 [V0.3 演示作品](demo/v0.3/README.md) · [完整验收路线](docs/ACCEPTANCE.md) · [V0.2 历史样片](demo/merchant/README.md)
+
+V0.3.1 改善第一次制作：填写引导会列出缺少的必填资料，点击即可定位；右侧文案示意随店名、产品和活动内容更新。生成前的门店资料、自由创意、风格、比例与时长会在**当前浏览器窗口**暂存，刷新或切换作品后点击「新建作品」可继续。关闭窗口后的恢复不作保证，重要内容请先生成作品；成功生成后会清空这份填写暂存，已有作品不受影响。详情见 [本轮验收记录](docs/ONBOARDING_ACCEPTANCE.md)。
 
 ![实际工作台与咖啡竖屏成片](demo/v0.3/studio.png)
 
@@ -102,13 +104,13 @@
 ~~~bash
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m pytest -q
-node --test tests/editor.test.cjs tests/http.test.cjs tests/drafts.test.cjs
+node --test tests/*.test.cjs
 node --check web/app.js
 ~~~
 
-当前本地 **133 项 Python、21 项 JavaScript 测试通过**。CI 配置覆盖 Linux Python 3.10/3.11/3.12 和 Windows Python 3.12，实时结果见仓库 Actions。测试包括真实视频解码、1080p 三种画幅、稳定文字、实际音量比、配音/SRT 时轴、取消任务、快照隔离、草稿副本、多画幅回滚、作品包校验、损坏照片检测、重复启动保护与断线提示。原生语音和页面操作另通过本机浏览器验证，详见 [验收说明](docs/ACCEPTANCE.md)。
+当前本地 **134 项 Python、27 项 JavaScript 测试通过**。CI 配置覆盖 Linux Python 3.10/3.11/3.12 和 Windows Python 3.12，实时结果见仓库 Actions。测试包括真实视频解码、1080p 三种画幅、稳定文字、实际音量比、配音/SRT 时轴、取消任务、快照隔离、草稿副本、多画幅回滚、作品包校验、损坏照片检测、重复启动保护与断线提示。原生语音和页面操作另通过本机浏览器验证，详见 [验收说明](docs/ACCEPTANCE.md)。
 
-制作可分发 ZIP：运行 **python scripts/build_release.py**。文件生成在项目目录的上一级，含源码、字体、说明、测试和演示作品；采用明确的文件白名单，排除 data、.env、.venv 和 Git 数据。ZIP 内的 RELEASE-MANIFEST.json 记录逐文件 SHA-256，旁边的 .sha256 文件校验完整 ZIP。重新打包自己生成的旧包时加 **--overwrite**。首次运行该包仍需要 Python 和联网安装依赖。
+制作可分发 ZIP：运行 **python scripts/build_release.py --version v0.3.1 --output ../AI-Video-MVP-v0.3.1.zip**。文件生成在项目目录的上一级，含源码、字体、说明、测试和演示作品；采用明确的文件白名单，排除 data、.env、.venv 和 Git 数据。ZIP 内的 RELEASE-MANIFEST.json 记录逐文件 SHA-256，旁边的 .sha256 文件校验完整 ZIP。重新打包自己生成的旧包时加 **--overwrite**。首次运行该包仍需要 Python 和联网安装依赖。
 
 app 为后端与媒体处理，web 为无构建依赖的网页，tests 为自动验收，demo 为虚构样片，docs 为使用与验收说明。bootstrap.py 负责启动，doctor.py 负责只读诊断，run.py 为服务入口。
 

@@ -7,11 +7,12 @@
   <meta name="description" content="FRAME 拾帧，把想法写成分镜，把分镜变成动态短片。">
   <title>FRAME 拾帧 · 创作工作台</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css">
-  <script src="/editor.js" defer></script>
-  <script src="/http.js" defer></script>
-  <script src="/drafts.js" defer></script>
-  <script src="/app.js" defer></script>
+  <link rel="stylesheet" href="/style.css?v=0.3.1">
+  <script src="/editor.js?v=0.3.1" defer></script>
+  <script src="/http.js?v=0.3.1" defer></script>
+  <script src="/drafts.js?v=0.3.1" defer></script>
+  <script src="/brief.js?v=0.3.1" defer></script>
+  <script src="/app.js?v=0.3.1" defer></script>
 </head>
 <body>
   <svg class="icon-defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
@@ -54,6 +55,13 @@
             <div id="showcase-section" class="showcase-section" hidden><div class="showcase-heading"><b>还没素材？先试做一支。</b><small>AI 演示照片 · 虚构门店</small></div><div id="showcase-options" class="showcase-options"></div><p>选择示例即创建可编辑作品。示例照片仅供体验，正式宣传请换成真实门店素材。</p></div>
             <form id="brief-form">
               <div class="brief-tabs" role="group" aria-label="创作类型"><button type="button" data-brief="merchant" class="selected" aria-pressed="true">商家宣传</button><button type="button" data-brief="creative" aria-pressed="false">自由创意</button></div>
+              <div class="brief-assist" aria-label="填写引导">
+                <div class="brief-assist-heading"><b id="brief-ready-title">先把门店资料填好</b><span id="brief-ready-count"></span></div>
+                <progress id="brief-ready-progress" value="0" max="5" aria-label="必填资料完成度"></progress>
+                <p id="brief-ready-note">照片可以在生成分镜后添加。</p>
+                <button type="button" id="brief-next" class="text-button">填写店名 →</button>
+                <div class="brief-draft-status"><small id="brief-draft-note">填写内容仅在本窗口暂存</small><button type="button" id="brief-clear" class="text-button">清空重新填写</button></div>
+              </div>
               <div id="merchant-fields">
                 <div class="merchant-intro"><span id="merchant-category-title">咖啡茶饮 · 到店邀请</span><button type="button" id="merchant-example">填入虚构示例 ↗</button></div>
                 <div id="industry-options" class="industry-options" role="group" aria-label="门店品类"></div>
@@ -109,7 +117,7 @@
 
         <aside class="preview-column">
           <section class="panel preview-panel"><div class="section-title"><h2>画面预览</h2><span id="preview-badge">风格示意</span></div>
-            <div class="preview-stage" id="preview-stage"><div class="sample-poster cinema" id="sample-poster"><div class="poster-top">F R A M E <span>01 / 03</span></div><div class="poster-orbit"></div><div class="poster-land"></div><div class="poster-copy"><span>A LITTLE ESCAPE</span><h3>把日常，<br>过成旷野。</h3><p>暂时放下日程，让好奇心带路。</p></div><div class="poster-line"></div></div><img id="scene-preview" alt="当前分镜预览" hidden><video id="final-video" controls playsinline preload="metadata" hidden></video></div>
+            <div class="preview-stage" id="preview-stage"><div class="sample-poster cinema" id="sample-poster"><div class="poster-top">F R A M E <span>文案示意</span></div><div class="poster-orbit"></div><div class="poster-land"></div><div class="poster-copy"><span id="brief-poster-label">到店邀请</span><h3 id="brief-poster-heading">你的小店名字</h3><p id="brief-poster-caption">这里会出现你本次主推的产品。</p></div><div class="poster-line"></div></div><img id="scene-preview" alt="当前分镜预览" hidden><video id="final-video" controls playsinline preload="metadata" hidden></video></div>
             <div class="preview-transport"><button id="play-preview" class="play-button" aria-label="播放分镜预览" disabled><svg><use href="#i-play"/></svg></button><span id="preview-time">00:00 <small>/ 00:15</small></span><span id="preview-spec">9:16</span><button id="next-preview" class="icon-button" aria-label="下一分镜" disabled>→</button></div>
             <div id="timeline" class="mini-timeline"><span></span><span></span><span></span></div>
             <p id="preview-hint" class="preview-hint">生成分镜后，在这里预览你的故事</p>
