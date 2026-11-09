@@ -1,0 +1,41 @@
+[
+  {
+    "name": "coffee",
+    "title": "拾光咖啡 · 竖屏到店演示",
+    "aspect": "9:16",
+    "width": 1080,
+    "height": 1920,
+    "duration": 18.25,
+    "bytes": 2166366,
+    "music_style": "ambient",
+    "narration": true,
+    "source_job": "7940060d-266a-4db5-9397-fb1f68d3110b",
+    "source_project": "b9258839-f0ac-4e65-ac4f-81d77aa850b8"
+  },
+  {
+    "name": "bakery",
+    "title": "麦田烘焙 · 横屏口播演示",
+    "aspect": "16:9",
+    "width": 1920,
+    "height": 1080,
+    "duration": 20.167,
+    "bytes": 2517652,
+    "music_style": "piano",
+    "narration": true,
+    "source_job": "79284527-1bab-4523-ba02-ebd592d5be1c",
+    "source_project": "d03acf94-1a93-4b91-b317-f628b0f83daf"
+  },
+  {
+    "name": "flowers",
+    "title": "一枝花房 · 方形产品演示",
+    "aspect": "1:1",
+    "width": 1080,
+    "height": 1080,
+    "duration": 16.583,
+    "bytes": 2032050,
+    "music_style": "light",
+    "narration": true,
+    "source_job": "15010a5d-7fc5-40da-aef2-8a014eef3127",
+    "source_project": "c2f13259-c8be-4d8f-a6ca-337257532cde"
+  }
+]

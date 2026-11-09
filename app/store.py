@@ -21,10 +21,12 @@ class Store:
         con.execute("PRAGMA journal_mode=WAL")
         return con
 
-    def projects(self):
+    def projects(self, include_archived=False):
         with self.connect() as con:
             rows = con.execute("SELECT body FROM projects").fetchall()
-        return sorted((json.loads(r[0]) for r in rows), key=lambda p: p["updated_at"], reverse=True)
+        projects = (json.loads(r[0]) for r in rows)
+        return sorted((p for p in projects if include_archived or not p.get("archived")),
+                      key=lambda p: p["updated_at"], reverse=True)
 
     def get_project(self, pid):
         with self.connect() as con:
@@ -45,6 +47,18 @@ class Store:
         with self.connect() as con:
             con.execute("INSERT OR REPLACE INTO jobs VALUES (?, ?, ?)", (job["id"], job["project_id"], json.dumps(job)))
 
+    def insert_jobs(self, jobs):
+        """Reserve a whole batch before any worker is allowed to start."""
+        with self.connect() as con:
+            con.executemany("INSERT INTO jobs VALUES (?, ?, ?)",
+                            [(job["id"],job["project_id"],json.dumps(job)) for job in jobs])
+
+    def insert_projects(self, projects):
+        """Create a group atomically; never replace an existing project."""
+        with self.connect() as con:
+            con.executemany("INSERT INTO projects VALUES (?, ?)",
+                            [(project["id"], json.dumps(project)) for project in projects])
+
     def get_job(self, jid):
         with self.connect() as con:
             row = con.execute("SELECT body FROM jobs WHERE id=?", (jid,)).fetchone()
@@ -57,6 +71,6 @@ class Store:
 
     def recover_jobs(self):
         for job in self.jobs():
-            if job["status"] in ("queued", "rendering"):
+            if job["status"] in ("queued", "rendering", "cancelling"):
                 job.update(status="failed", error="服务已重启，上次导出中断。请重新导出。")
                 self.save_job(job)
