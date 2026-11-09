@@ -3,18 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#141616">
+  <meta name="theme-color" content="#f7f8f6">
   <meta name="description" content="FRAME 拾帧，把想法写成分镜，把分镜变成动态短片。">
   <title>FRAME 拾帧 · 创作工作台</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css?v=0.3.1">
+  <link rel="icon" href="/favicon.svg?v=0.3.2" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css?v=0.3.2">
   <script src="/editor.js?v=0.3.1" defer></script>
   <script src="/http.js?v=0.3.1" defer></script>
   <script src="/drafts.js?v=0.3.1" defer></script>
   <script src="/brief.js?v=0.3.1" defer></script>
-  <script src="/app.js?v=0.3.1" defer></script>
+  <script src="/app.js?v=0.3.2" defer></script>
 </head>
-<body>
+<body data-stage="new">
   <svg class="icon-defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
     <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/><path d="m20 2 .6 1.4L22 4l-1.4.6L20 6l-.6-1.4L18 4l1.4-.6L20 2Z"/></symbol>
     <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></symbol>
@@ -28,7 +28,7 @@
     <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></symbol>
   </defs></svg>
   <aside class="sidebar">
-    <a class="brand" href="/" aria-label="FRAME 拾帧首页"><span class="brand-mark">f<span>／</span></span><span>FRAME<small>拾帧 · 灵感成片</small></span></a>
+    <a class="brand" href="/" aria-label="FRAME 拾帧首页"><span class="brand-mark"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 4H4v5m12-5h4v5M4 15v5h4m12-5v5h-4"/><path d="m10 8 6 4-6 4Z"/></svg></span><span>拾帧 <small>FRAME STUDIO</small></span></a>
     <button class="new-project" id="new-project"><svg><use href="#i-plus"/></svg>新建作品 <span>↗</span></button>
     <nav aria-label="主导航">
       <button id="nav-studio" class="nav-item active"><svg><use href="#i-grid"/></svg>创作工作台</button>
@@ -39,20 +39,20 @@
     <div class="sidebar-bottom">
       <div class="local-note"><span class="status-dot"></span><div>灵感，安心留在本地<small>作品自动保存在这台设备</small></div></div>
       <button class="help-button" id="help-open"><svg><use href="#i-info"/></svg>演示指南 <span>↗</span></button>
-      <div class="profile"><span>Q</span><div>我的创作空间<small>PERSONAL WORKSPACE</small></div><span class="version">V0.3</span></div>
+      <div class="profile"><span>拾</span><div>我的创作空间<small>让小店的好，被看见</small></div><span class="version">V0.3.2</span></div>
     </div>
   </aside>
 
   <main>
     <header class="topbar"><div><span>工作空间</span><b>/</b><span id="breadcrumb">创作工作台</span></div><div class="top-actions"><button id="queue-open" class="queue-open">导出任务<span id="queue-count" hidden>0</span></button><span id="connection" class="connection" role="status"><span class="status-dot"></span>本地工作室</span><button id="retry-connection" class="queue-open" hidden>重新连接</button><button class="icon-button" id="help-top" aria-label="打开使用说明"><svg><use href="#i-info"/></svg></button></div></header>
     <div id="studio-view" class="page">
-      <section class="page-heading"><div><div class="eyebrow">YOUR SHOP, IN THE SPOTLIGHT</div><h1>让你的小店，被更多人看见<span>。</span></h1><p>填好门店信息，放上真实照片，做一支有声音的到店邀请。</p></div><span class="studio-tag">CREATOR STUDIO <i>✳</i></span></section>
+      <section class="page-heading studio-heading"><div><div class="eyebrow"><span></span> 每一家小店，都有好故事</div><h1>小店的日常，<em>值得被看见。</em></h1><p>把照片变成短片，让新品、活动与到店邀请，都有自己的画面。</p></div><button type="button" id="start-own" class="primary">开始我的创作 <svg><use href="#i-arrow"/></svg></button></section>
+      <section id="showcase-section" class="showcase-section" aria-label="灵感示例" hidden><div class="showcase-heading"><div><h2>从一份灵感开始</h2><p>选一个示例，体验从照片到成片。</p></div><span>三个小店故事 <i>↘</i></span></div><div id="showcase-options" class="showcase-options"></div><p class="showcase-disclosure">AI 演示照片 · 虚构门店。选择即创建可编辑作品，正式宣传请换成自己的照片与信息。</p></section>
       <div class="steps" aria-label="创作进度"><button class="step active" id="step-idea"><span>01</span>创意输入</button><div></div><button class="step" id="step-board" disabled><span>02</span>分镜编辑</button><div></div><button class="step" id="step-export" disabled><span>03</span>成片导出</button><small>让灵感一步步成形</small></div>
       <div class="workspace">
         <div class="editor-column">
           <section class="panel brief-panel" id="brief-panel">
-            <div class="section-title"><h2><svg><use href="#i-spark"/></svg>从你的小店开始</h2><span>SHOP STORIES</span></div>
-            <div id="showcase-section" class="showcase-section" hidden><div class="showcase-heading"><b>还没素材？先试做一支。</b><small>AI 演示照片 · 虚构门店</small></div><div id="showcase-options" class="showcase-options"></div><p>选择示例即创建可编辑作品。示例照片仅供体验，正式宣传请换成真实门店素材。</p></div>
+            <div class="section-title"><h2><svg><use href="#i-spark"/></svg>这次，想分享什么？</h2><span>01 / 创意准备</span></div>
             <form id="brief-form">
               <div class="brief-tabs" role="group" aria-label="创作类型"><button type="button" data-brief="merchant" class="selected" aria-pressed="true">商家宣传</button><button type="button" data-brief="creative" aria-pressed="false">自由创意</button></div>
               <div class="brief-assist" aria-label="填写引导">
@@ -84,6 +84,7 @@
               <div class="prompt-wrap"><textarea id="prompt" name="prompt" minlength="5" maxlength="800" disabled placeholder="例如：一支关于周末城市漫游的短片。给忙碌的年轻人，传递慢下来、发现日常之美的感觉……"></textarea><div class="prompt-footer"><span>描述主题、受众，以及你想传递的感觉</span><span id="prompt-count">0 / 800</span></div></div>
               <div class="inspiration"><span>试试这些灵感</span><div id="examples"></div></div>
               </div>
+              <details class="creative-options"><summary>画面风格与比例 <span>选择喜欢的呈现方式</span></summary>
               <div class="field-heading"><span class="field-label">选择画面风格</span><small>三种动态视觉模板</small></div>
               <div class="style-options" role="group" aria-label="画面风格">
                 <button type="button" class="style-option selected" data-style="cinema" aria-pressed="true"><div class="style-art cinema"><i></i><b></b><em>01 / SLOW LIVING</em></div><span>日落电影感 <svg><use href="#i-check"/></svg></span><small>温暖 · 留白 · 山野</small></button>
@@ -91,6 +92,7 @@
                 <button type="button" class="style-option" data-style="tech" aria-pressed="false"><div class="style-art tech"><i></i><b></b><em>03 / NEXT CHAPTER</em></div><span>未来科技感 <svg><use href="#i-check"/></svg></span><small>理性 · 轨道 · 光线</small></button>
               </div>
               <div class="format-row"><fieldset><legend class="field-label">画面比例</legend><div class="segment" id="aspect-options"><button type="button" data-aspect="9:16" class="selected" aria-pressed="true"><i class="ratio-icon vertical"></i>9:16</button><button type="button" data-aspect="16:9" aria-pressed="false"><i class="ratio-icon horizontal"></i>16:9</button><button type="button" data-aspect="1:1" aria-pressed="false"><i class="ratio-icon square"></i>1:1</button></div></fieldset><div class="duration-field"><label class="field-label" for="duration">预计时长</label><select id="duration"><option value="15">15 秒 · 轻量表达</option><option value="30">30 秒 · 完整故事</option><option value="45">45 秒 · 深入展开</option><option value="60">60 秒 · 从容讲述</option></select></div></div>
+              </details>
               <div class="generation-mode" hidden><label for="generation-mode">编写方式</label><select id="generation-mode"><option value="template">本地模板 · 无需密钥</option><option value="ai" disabled>DeepSeek AI · 尚未配置</option></select></div>
               <div id="form-error" class="error-box" role="alert" hidden></div>
               <button type="submit" id="generate" class="primary wide"><svg><use href="#i-spark"/></svg><span>生成我的分镜</span><svg><use href="#i-arrow"/></svg></button>
@@ -122,6 +124,7 @@
             <div id="timeline" class="mini-timeline"><span></span><span></span><span></span></div>
             <p id="preview-hint" class="preview-hint">生成分镜后，在这里预览你的故事</p>
           </section>
+          <section class="creation-tip"><span class="tip-icon"><svg><use href="#i-film"/></svg></span><div><h3>用真实照片，讲自己的故事</h3><p>准备产品、店内环境与门头照片。生成分镜后，按提示上传就好。</p><span>照片 → 分镜 → 短片</span></div></section>
           <section class="panel export-panel">
             <div class="section-title"><h2>成片设置</h2><span>EXPORT</span></div>
             <div class="export-spec"><span>视频格式</span><strong>MP4 <small>H.264 · 24 fps</small></strong></div>

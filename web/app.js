@@ -63,6 +63,7 @@ function setPage(page) {
 }
 
 function setStep(step) {
+  document.body.dataset.stage=state.current ? "edit":"new";
   $("#step-idea").classList.toggle("active", step === 1);
   $("#step-board").classList.toggle("active", step === 2);
   $("#step-export").classList.toggle("active", step === 3);
@@ -170,6 +171,7 @@ async function openLibrary() {
   ++state.serial;
   setProjectLoading(false);
   setPage("library");
+  window.scrollTo({top:0, behavior:"smooth"});
   try{await refreshProjects();}catch(error){toast(error.message,true);}
 }
 
@@ -198,7 +200,7 @@ async function openProject(id) {
 
 function setProjectLoading(loading) {
   state.opening=loading;
-  for(const selector of ["#storyboard-panel","#brief-panel",".preview-column"]){
+  for(const selector of ["#storyboard-panel","#brief-panel","#showcase-section","#start-own",".preview-column"]){
     $(selector).inert=loading;$(selector).setAttribute("aria-busy",String(loading));
   }
   $("#save-status").textContent=loading ? "正在打开作品…" : state.dirty ? "已暂存草稿 · 待保存":"已保存至本地";
@@ -843,13 +845,14 @@ async function init(){
   if(state.initializing)return;
   state.initializing=true;
   $("#brief-panel").inert=true;
+  $("#showcase-section").inert=true;
   try{
     const [config,,health]=await Promise.all([api("/api/config"),refreshProjects(),api("/api/health")]);
     state.config=config;
     refreshQueue();
     setupMerchantCatalog();
     $("#showcase-section").hidden=!config.showcases?.length;
-    $("#showcase-options").innerHTML=(config.showcases||[]).map(item=>`<button type="button" data-showcase="${item.id}" class="showcase-card"><img src="${item.image}" alt="${esc(item.title)} AI 演示照片" loading="lazy"><span>${esc(item.title)} <i>↗</i></span><small>${esc(item.description)}</small></button>`).join("");
+    $("#showcase-options").innerHTML=(config.showcases||[]).map(item=>`<button type="button" data-showcase="${item.id}" class="showcase-card"><div class="showcase-image"><img src="${item.image}" alt="${esc(item.title)} AI 演示照片" loading="lazy"><span class="showcase-type">${esc(({coffee:"咖啡 · 到店邀请",flowers:"花店 · 产品主推",bakery:"烘焙 · 新品推荐"})[item.id] || "门店故事")}</span><span class="showcase-play" aria-hidden="true">${icon("play")}</span></div><div class="showcase-info"><div><h3>${esc(item.title)}</h3><p>${esc(item.description)}</p></div><span class="showcase-arrow" aria-hidden="true">↗</span></div></button>`).join("");
     $("#narration").disabled = !config.narration_available;
     $("#narration").checked = config.narration_available;
     $("#narration-note").textContent = config.narration_note + "。开启后自动延长过短镜头，最长 120 秒。";
@@ -862,7 +865,7 @@ async function init(){
     state.initialized=true;connectionStatus(true);showError("#form-error");
     await restoreRoute();
   }catch(error){connectionStatus(false);showError("#form-error",error.message);}
-  finally{state.initializing=false;$("#brief-panel").inert=false;$("#generate").disabled=!state.initialized;}
+  finally{state.initializing=false;$("#brief-panel").inert=false;$("#showcase-section").inert=false;$("#generate").disabled=!state.initialized;}
 }
 $("#retry-connection").addEventListener("click",async()=>{
   $("#retry-connection").disabled=true;
@@ -1259,6 +1262,12 @@ $("#brief-next").addEventListener("click",()=>{
   const next=window.FrameBrief.readiness(readBrief()).missing[0];
   const target=next ? $(next.field === "prompt" ? "#prompt" : `#merchant-${next.field.replaceAll("_","-")}`) : $("#generate");
   target.scrollIntoView({behavior:"smooth",block:"center"});target.focus({preventScroll:true});
+});
+$("#start-own").addEventListener("click",()=>{
+  if(!canLeave() || state.initializing || state.opening)return;
+  $("#brief-panel").scrollIntoView({behavior:"smooth",block:"start"});
+  const target=$(state.briefKind === "merchant" ? "#merchant-store-name":"#prompt");
+  target.focus({preventScroll:true});
 });
 $("#brief-clear").addEventListener("click",()=>{
   if(!confirm("清空本窗口尚未生成的填写内容？已有作品不受影响。"))return;
